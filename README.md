@@ -6,10 +6,12 @@ No TapVow code or package is used.
 
 ## Current build
 
-This is the day 1 and day 2 offline foundation.
+This build includes the day 1 to day 3 offline court.
 It includes a command parser, rate limits, a case engine, a durable JSONL journal and a fixture replay source.
-Live OAuth and EventSub are disabled interfaces. The overlay and live moderation are not built yet.
-The simulator uses synthetic accounts and a simulated streamer approval. It sends no network requests.
+The 1080p overlay shows the case, weighted vote, countdown and gavel.
+Live OAuth and EventSub remain disabled interfaces.
+The simulator uses synthetic accounts and a simulated streamer approval.
+The browser connects only to the local server. No Twitch requests are sent.
 
 ## Setup
 
@@ -34,15 +36,47 @@ df -g /System/Volumes/Data
 memory_pressure | tail -1
 npm test
 npm run sim
+```
+
+Open [the overlay](http://localhost:3000/overlay) after starting the simulator.
+The first connected page starts the fixture automatically.
+One command drives the case card, votes, a 25-second countdown, a simulated approval and the gavel.
+The server stays open. Stop it with Ctrl+C.
+The overlay has a transparent background for OBS. Set the browser source to 1920 by 1080.
+The app uses local files only. No CDN or build step is needed.
+
+Each simulator process gets a new journal under data/demo-*.jsonl.
+The fixture uses fresh event IDs for each run and retains its duplicate-delivery test.
+The server binds to loopback on port 3000. Run one server at a time.
+Each state change and vote adds an audit record. The /cases endpoint returns the current state.
+SSE sends full snapshots and reconnects automatically. A reconnect does not strike the same gavel again.
+
+## Operator mode
+
+For manual approval, stop the simulator and run the following command.
+
+```sh
 npm run dev
 ```
 
-The simulator writes data/sim-audit.jsonl and exits.
-Each state change and each vote adds one JSONL audit record.
-Repeat runs reuse operation IDs and do not create another case.
-The local server binds to loopback on port 3000.
-Open the root page or /cases to read the snapshot loaded at server startup.
-Run the simulator before the server. There is no live overlay or SSE yet.
+Open [the operator page](http://localhost:3000/operator).
+Select Start fixture. Keep the operator page focused for keys.
+Open the overlay in another tab or OBS.
+
+| Key | Action |
+| --- | --- |
+| Space | Close voting early |
+| A | Approve the jury result |
+| V | Veto the action |
+
+With no jury result, A explicitly approves a timeout intent.
+V records no action. Veto wins if A and V arrive within the 300 millisecond decision window.
+After the ruling, the gavel plays once and the two-minute appeal window begins.
+A new fixture can start after the case closes.
+The operator page shows voter names, weights and changed votes.
+Controls require the current case ID and a page token from the same local origin.
+Manual mode restores data/operator-audit.jsonl. Demo mode never turns on live actions.
+Appeal resolution controls and live Twitch chat are still future work.
 
 ## Commands
 
@@ -65,15 +99,16 @@ The live adapter must supply authenticated Twitch event badges and IDs.
 ## Case rules
 
 The state path is open, evidence, voting, awaiting_approval, ruling, appeal_window and closed.
-Voting lasts 25 seconds. The host must call tick to advance timers.
-The simulator supplies a virtual clock. A later live host must schedule tick.
+Voting lasts 25 seconds. The server advances timers four times per second.
+Tests use a virtual clock so they do not wait for real deadlines.
 Only one case can stay open per accused user.
 An accused user cannot vote in that case.
 One vote per user counts. A new vote replaces it and records the change.
 Mods and the broadcaster have weight three. Other viewers have weight one.
 Quorum requires three distinct people. A tie has no jury result.
 More than 40 new voters in ten seconds marks a case as contested.
-Every ruling requires explicit streamer approval. AUTO_ACTIONS is not enabled.
+Manual mode requires explicit streamer approval. AUTO_ACTIONS is not enabled.
+Only npm run sim supplies a clearly labelled synthetic approval.
 An innocent ruling acts as a veto and has no timeout intent.
 The maximum timeout intent is 600 seconds. Old messages cannot produce a timeout.
 The action adapter only records dry run intents. It does not call Helix.
@@ -112,8 +147,12 @@ Neither gate has passed in this build.
 ## Build record
 
 Tests were written before the engine implementation.
-All 21 unit tests and the TypeScript check passed on 26 October 2026.
-The offline replay completed. A second replay kept the same case and all 11 audit records.
+All 27 unit and HTTP tests and the TypeScript check passed on 26 October 2026.
+The 1080p browser check showed card, voting, result and gavel without a refresh.
+The operator browser check confirmed Space, A and V, including veto precedence.
+Screenshots are in docs/screenshots.
+The optional browser checks in scripts use the sprint browser on CDP port 9252.
+Each browser check starts its own local server and closes its own tab when done.
 Validation results are recorded in docs/codex-log.md and the lane report.
 Do not use the plan's full-product submission claims until the corresponding work is complete.
 

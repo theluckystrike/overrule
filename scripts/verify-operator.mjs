@@ -1,0 +1,46 @@
+import assert from 'node:assert/strict';
+import { writeFile } from 'node:fs/promises';
+import { VoteLoop } from '../src/loop.ts';
+import { createApp } from '../src/server.ts';
+import { replay } from '../src/replay.ts';
+let now = Date.now();
+const loop = new VoteLoop({ now: () => now });
+const app = createApp(loop, { tick: false });
+await new Promise(resolve => app.server.listen(0, '127.0.0.1', resolve));
+const base = `http://127.0.0.1:${app.server.address().port}`;
+const target = await (await fetch('http://127.0.0.1:9252/json/new?about:blank', { method: 'PUT' })).json();
+const ws = new WebSocket(target.webSocketDebuggerUrl);
+await new Promise(resolve => ws.addEventListener('open', resolve, { once: true }));
+let next = 0; const pending = new Map();
+ws.addEventListener('message', event => { const m = JSON.parse(event.data); const p = pending.get(m.id); if (p) { pending.delete(m.id); m.error ? p.reject(new Error(m.error.message)) : p.resolve(m.result); } });
+const send = (method, params = {}) => new Promise((resolve, reject) => { const id = ++next; pending.set(id, { resolve, reject }); ws.send(JSON.stringify({ id, method, params })); });
+const evaluate = async expression => { const r = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true }); if(r.exceptionDetails) throw new Error(r.exceptionDetails.text); return r.result.value; };
+const wait = expression => evaluate(`new Promise((resolve,reject)=>{let n=0;const t=setInterval(()=>{if(${expression}){clearInterval(t);resolve(true)}else if(n++>50){clearInterval(t);reject(new Error('Operator timed out'))}},100)})`);
+const key = async (key, code) => { await send('Input.dispatchKeyEvent', { type: 'keyDown', key, code }); await send('Input.dispatchKeyEvent', { type: 'keyUp', key, code }); };
+try {
+  await send('Page.enable');
+  await send('Emulation.setDeviceMetricsOverride', { width: 1920, height: 1080, deviceScaleFactor: 1, mobile: false });
+  await send('Page.navigate', { url: `${base}/operator` });
+  await wait("document.getElementById('connection')?.textContent === '● Connected'");
+  const ratio = await evaluate('innerWidth / 1920');
+  if (ratio !== 1) await send('Emulation.setDeviceMetricsOverride', { width: Math.round(1920 / ratio), height: Math.round(1080 / ratio), deviceScaleFactor: ratio, mobile: false });
+  assert.equal(await evaluate('innerWidth'), 1920); assert.equal(await evaluate('innerHeight'), 1080);
+  await replay(loop, { now: () => now, sleep: async ms => { now += ms; }, runId: 'browser-keys' });
+  await wait("document.getElementById('phase')?.textContent === 'VOTING'");
+  await key(' ', 'Space');
+  await wait("document.getElementById('phase')?.textContent === 'AWAITING APPROVAL'");
+  await key('a', 'KeyA'); await key('v', 'KeyV');
+  await wait("document.getElementById('pending')?.textContent.startsWith('Veto queued')");
+  now += 300; loop.tick();
+  await wait("document.getElementById('phase')?.textContent === 'RULING'");
+  assert.equal(loop.snapshot().current.verdict, 'notguilty');
+  assert.equal(loop.snapshot().current.timeoutSeconds, 0);
+  assert.equal(await evaluate('document.querySelectorAll("#voters li").length'), 3);
+  assert.match(await evaluate('document.getElementById("voters").textContent'), /Changed/);
+  const shot = await send('Page.captureScreenshot', { format: 'png' });
+  await writeFile('docs/screenshots/day3-operator.png', Buffer.from(shot.data, 'base64'));
+  console.log('Operator browser check passed. Space closes voting. A then V yields no action.');
+} finally {
+  ws.close(); await fetch(`http://127.0.0.1:9252/json/close/${target.id}`);
+  await app.stop(); loop.dispose();
+}

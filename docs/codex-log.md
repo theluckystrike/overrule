@@ -35,5 +35,46 @@ No test failures were observed. Do not claim a test-discovered bug in the submis
 
 G1 needs live OAuth, EventSub and one real channel message.
 G2 passed for the offline foundation. Tests and the fixture replay completed.
-The overlay, operator controls and live Helix actions remain later-day work.
+The day 3 entry below records the overlay work. Live Helix actions remain later-day work.
 The final submission text must describe only work that has passed its gate.
+
+## Day 28 Oct work
+
+Completed ahead of schedule on 26 October 2026 in the same Codex thread.
+The owner requested the overlay, vote loop, operator keys, simulator and tests.
+No Twitch credentials were used. No other agent wrote code.
+
+Added the 1080p overlay with a case card, weighted bars, a countdown and a gavel.
+Added SSE snapshots and reconnect status.
+Added the operator page with Space, A and V.
+A 300 millisecond decision window gives veto priority over an approval in the same burst.
+Added a paced fixture replay with fresh event IDs and current timestamps.
+The simulator starts when its first page connects. It supplies only synthetic approval.
+Manual mode keeps approval with the operator.
+The case engine did not need changes.
+
+All 27 unit and HTTP tests passed. The TypeScript check passed.
+The first full npm run sim browser check reached the gavel without a refresh.
+At 1920 by 1080 the card fit inside the frame with no overflow.
+The operator browser check used Space, A and V and confirmed no action after veto.
+Screenshots are saved in docs/screenshots.
+
+The first network-drop harness used Chrome offline emulation.
+That did not close the existing SSE connection and the harness timed out.
+The revised harness closes the test server connections to cause a real stream drop.
+This is a test harness change. Do not claim it as a product bug fix.
+
+Disk checks showed 20 to 22 GB available during verification.
+Free memory stayed at or above 65 percent.
+No package install or paid call was needed.
+Only the approved CDP browser on port 9252 was used.
+Each browser check closed its own tab and left other tabs alone.
+
+The remaining live gates still need OAuth, real EventSub and a real test-channel timeout.
+Retention, appeal controls and the full docket remain future work.
+
+The revised stream-drop check passed. EventSource reconnected after the server closed its connections.
+The case snapshot returned and the gavel did not repeat.
+The browser harness normalizes only its own tab to account for the shared browser zoom.
+It checks a 1920 by 1080 layout without changing the shared profile.
+G3 passed for the offline simulator. No manual refresh was needed for the court loop.

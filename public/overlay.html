@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Overrule — live court</title><link rel="stylesheet" href="/overlay.css"><script src="/overlay.js" defer></script></head>
+<body class="overlay">
+<main class="stage">
+  <header class="masthead"><div class="brand"><span class="brand-mark">O/</span> OVERRULE</div><div class="connection" id="connection">Connecting</div></header>
+  <section class="court" aria-label="Moderation case">
+    <div class="case-top"><span class="eyebrow">THE CHAT COURT</span><span class="badge">OFFLINE DEMO</span></div>
+    <div id="idle"><h1>The court is ready.</h1><p>A reported message starts the hearing.</p></div>
+    <article id="case-card" hidden>
+      <div class="case-meta"><span id="case-number"></span><span id="phase" class="phase"></span></div>
+      <h1 id="accused"></h1>
+      <blockquote id="message"></blockquote>
+      <div class="charge"><span class="eyebrow">THE CHARGE</span><p id="reason"></p></div>
+      <div class="vote-heading"><h2>The jury speaks</h2><div class="clock"><span id="timer">25</span><small>SECONDS</small></div></div>
+      <div class="vote-labels"><span>Guilty <strong id="guilty">0</strong></span><span>Not guilty <strong id="innocent">0</strong></span></div>
+      <div class="vote-track"><div id="guilty-bar"></div><div id="innocent-bar"></div></div>
+      <div class="vote-notes"><span id="quorum">Waiting for three jurors</span><span>VIEWER ×1 · MOD ×3</span></div>
+      <p id="status" class="status" aria-live="polite"></p>
+      <p id="contested" class="contested" hidden>Contested vote · Streamer review required</p>
+      <div class="verdict" id="verdict" hidden><div class="gavel" id="gavel" aria-hidden="true"><span class="gavel-head"></span><span class="gavel-handle"></span></div><div><span class="eyebrow">THE RULING</span><h2 id="verdict-text"></h2><p id="verdict-note"></p></div></div>
+      <footer class="commands"><span>CHAT VOTES</span><code>!guilty</code><code>!notguilty</code><span id="case-hint"></span></footer>
+    </article>
+    <footer class="court-footer"><span>Visible decisions. A chance to appeal.</span><span>SYNTHETIC TEST ACCOUNTS</span></footer>
+  </section>
+</main>
+</body></html>
