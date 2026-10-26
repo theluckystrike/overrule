@@ -1,67 +1,62 @@
 # Overrule
 
-A local moderation court for Twitch chat.
+A moderation court for Twitch chat, with visible votes, streamer review and an appeal record.
+
 Built from an empty repository with OpenAI Codex for the Codex x TwitchCon Hackathon.
-No TapVow code or package is used.
+The current build runs locally with synthetic chat and dry run actions.
+**Live OAuth and EventSub are not implemented. No real Twitch timeout has been verified.**
 
-## Current build
+![Overrule showing a dry run ruling](docs/screenshots/day3-ruling.png)
 
-This build includes the day 1 to day 5 offline court.
-It includes a command parser, rate limits, a case engine, a durable JSONL journal and a fixture replay source.
-The 1080p overlay shows the case, weighted vote, countdown and gavel.
-Live OAuth and EventSub remain disabled interfaces.
-The simulator uses synthetic accounts and a simulated streamer approval.
-The browser connects only to the local server. No Twitch requests are sent.
-
-## Setup
+## Try the offline demo
 
 Use Node.js 22.18 or later in the Node 22 line.
-Node runs the TypeScript source directly. The simulator and unit tests need no package install.
-The optional type check needs the development packages.
-
-Check disk space and memory before installs and tests on this Mac.
-Do not continue below 20 GB available or 25 percent free memory.
+No Twitch account, model key or package install is needed for the simulator.
+Clone this repository, enter its folder and run the following command.
 
 ```sh
-df -g /System/Volumes/Data
-memory_pressure | tail -1
-npm ci --ignore-scripts
-npm run check
-```
-
-The lock file pins the three development packages. The installed packages use about 25 MB.
-
-```sh
-df -g /System/Volumes/Data
-memory_pressure | tail -1
-npm test
 npm run sim
 ```
 
-Open [the overlay](http://localhost:3000/overlay) after starting the simulator.
-The first connected page starts the fixture automatically.
-One command drives the case card, votes, a 25-second countdown, a simulated approval and the gavel.
+Open [the overlay](http://localhost:3000/overlay).
+The first connected page starts the fixture.
+It shows one case, three synthetic jurors, a 25-second vote, a simulated approval and a gavel.
 The server stays open. Stop it with Ctrl+C.
-The overlay has a transparent background for OBS. Set the browser source to 1920 by 1080.
-The app uses local files only. No CDN or build step is needed.
+Run only one server at a time.
 
-Each simulator process gets a new journal under data/demo-*.jsonl.
-The fixture uses fresh event IDs for each run and retains its duplicate-delivery test.
-The server binds to loopback on port 3000. Run one server at a time.
-Each state change and vote adds an audit record. The /cases endpoint returns the current state.
-SSE sends full snapshots and reconnects automatically. A reconnect does not strike the same gavel again.
+For OBS, use the overlay URL as a browser source at 1920 by 1080.
+The background is transparent. The browser layout has been checked at that size.
+An actual OBS and Twitch stream rehearsal is still needed.
 
-## Operator mode
+## Run modes
 
-For manual approval, stop the simulator and run the following command.
+| Mode | Command or entry point | Behavior |
+| --- | --- | --- |
+| Automatic demo | `npm run sim` | Fixture starts when a page connects. Approval is synthetic. Actions are dry runs |
+| Manual court | `npm run dev` | Start the fixture on the operator page. A key press is required for the ruling |
+| Missing model key | `OPENAI_API_KEY= MODEL_ENABLED=1 npm run sim` | The loop uses deterministic advice |
+| Fake Helix tests | `npm test` | Tests send HTTP requests to a local fake server |
+| Live Helix adapter | `createLiveHelix` in src/helix.ts | Requires an explicit owner gate and a broadcaster OAuth provider. Not enabled by the CLI |
 
-```sh
-npm run dev
-```
+Setting DRY_RUN=0 stops the current CLI with an owner-needed message.
+It does not connect the app to Twitch.
+AUTO_ACTIONS does not enable real moderation.
 
-Open [the operator page](http://localhost:3000/operator).
-Select Start fixture. Keep the operator page focused for keys.
-Open the overlay in another tab or OBS.
+## Pages and controls
+
+| Page | Purpose |
+| --- | --- |
+| [Overlay](http://localhost:3000/overlay) | Case card, weighted votes, countdown and gavel |
+| [Operator](http://localhost:3000/operator) | Fixture start, keys and appeal review |
+| [Docket](http://localhost:3000/docket) | Cases, public votes, action status, precedent and consistency |
+| [Case data](http://localhost:3000/cases) | Current JSON snapshot |
+
+The root page opens the operator desk.
+The server binds to loopback on port 3000.
+SSE sends full snapshots and reconnects automatically.
+The gavel does not repeat when the same ruling reconnects or reloads.
+
+In manual mode, select Start fixture and keep the operator page focused.
 
 | Key | Action |
 | --- | --- |
@@ -70,163 +65,178 @@ Open the overlay in another tab or OBS.
 | V | Veto the action |
 
 With no jury result, A explicitly approves a timeout intent.
-V records no action. Veto wins if A and V arrive within the 300 millisecond decision window.
-After the ruling, the gavel plays once and the two-minute appeal window begins.
-A new fixture can start after the case closes.
-The operator page shows voter names, weights and changed votes.
-Controls require the current case ID and a page token from the same local origin.
-Manual mode restores data/operator-audit.jsonl. Demo mode never turns on live actions.
-During the appeal window, select Simulate accused appeal. Then select Uphold ruling or Overturn ruling.
-The button is for offline tests. A live appeal must come from the accused in chat.
-Open [the docket](http://localhost:3000/docket) to see cases, votes, actions and consistency.
-Live Twitch chat is still future work.
-
-## Commands
-
-| Command | Meaning |
-| --- | --- |
-| `!case @login reason` | A mod opens a case on that user's latest message |
-| `!report message-id reason` | A viewer reports a recent message |
-| `!report reason` in a reply | A viewer reports the reply target |
-| `!guilty [case-id]` | Vote guilty |
-| `!notguilty [case-id]` | Vote not guilty |
-| `!vote guilty [case-id]` | Alternate vote form |
-| `!appeal` | The accused requests an appeal |
-| `!docket` | Return the local case endpoint hint |
-
-A case ID is required when more than one case is voting.
-The parser accepts at most five commands per user in ten seconds.
-Messages expire from the ingest cache after two minutes.
-The live adapter must supply authenticated Twitch event badges and IDs.
+Veto wins if A and V arrive within the 300 millisecond decision window.
+During the appeal window, select Simulate accused appeal, then Uphold ruling or Overturn ruling.
+That button is an offline stand-in for the accused. A live appeal must come from the accused in chat.
+A new fixture can start after the current case closes.
 
 ## Case rules
 
-The state path is open, evidence, voting, awaiting_approval, ruling, appeal_window and closed.
-Voting lasts 25 seconds. The server advances timers four times per second.
-Tests use a virtual clock so they do not wait for real deadlines.
-Only one case can stay open per accused user.
-An accused user cannot vote in that case.
-One vote per user counts. A new vote replaces it and records the change.
-Mods and the broadcaster have weight three. Other viewers have weight one.
-Quorum requires three distinct people. A tie has no jury result.
-More than 40 new voters in ten seconds marks a case as contested.
-Manual mode requires explicit streamer approval. AUTO_ACTIONS is not enabled.
-Only npm run sim supplies a clearly labelled synthetic approval.
-An innocent ruling acts as a veto and has no timeout intent.
-The maximum timeout intent is 600 seconds. Old messages cannot produce a timeout.
-The default Helix adapter records dry run actions. It makes no Twitch request.
-A separate HTTP adapter is tested against a local fake Helix server.
-Each accused user has one appeal per stream. The appeal window is two minutes.
-An appeal needs a streamer ruling. An overturn changes the final precedent verdict.
+- One active case per accused user.
+- One vote per user. A changed vote replaces the earlier vote.
+- Viewer weight one. Mod and broadcaster weight three.
+- No vote from the accused in their own case.
+- Three distinct jurors are required. A tie has no jury result.
+- More than 40 new voters in ten seconds marks the vote as contested.
+- Manual mode requires streamer approval. Model advice never authorizes an action.
+- Timeout requests are capped at 600 seconds. Messages older than two minutes cannot trigger a new timeout.
+- No permanent ban or message deletion action.
+- One appeal per stream ID, with a two-minute request window. The current local runtime creates a stream ID for each process.
 
-## Storage and limits
+The parser supports `!case @login reason`, `!report message-id reason`, reply reports, `!guilty`, `!notguilty`, `!vote guilty`, `!appeal` and `!docket`.
+Include the case ID on a vote when more than one case is voting.
+The parser allows five commands per user in ten seconds.
+There is no live chat connection in the shipped modes. Fixtures drive these commands.
 
-This tool holds chat text on local disk. Do not use it with real viewer data yet.
-The journal stores full case snapshots and operation IDs. It restores both after restart.
-Writes are flushed before the in-memory index changes. Invalid or partial records stop startup.
-Use one process per journal. There is no cross-process lock or journal compaction yet.
-Closing a case clears text from its current snapshot. Earlier audit records still hold that text.
-The planned appeal-window text purge and 14-day retention tool are not implemented.
-No production privacy or retention gate has passed.
+## Actions, appeals and precedent
 
-Nearest precedent uses word overlap on stored rule labels.
-Simple keywords select spam, harassment or links. Other reasons use channel-conduct.
-The optional model writes neutral charge text and selects a supplied precedent.
+The Helix interface has a default dry run client and an HTTP client.
+Tests cover timeout, verdict chat and owned-timeout removal against a local fake server.
+The HTTP client checks response status and chat delivery status.
+
+The journal records an action before the request starts.
+It then records sent, failed or unknown status with the adapter mode.
+Sent in dry run mode means only that a local simulation completed.
+Fake mode means the local fake server accepted the request.
+Neither is proof of a Twitch action.
+
+HTTP requests have a four-second deadline. Writes are not retried automatically.
+A saved pending action becomes unknown after restart and is not sent again.
+An owner must check the channel before any manual recovery.
+There is no recovery button yet.
+
+An overturn changes the final precedent and requests removal of the owned timeout.
+The HTTP client compares the current timeout with its saved receipt first.
+It refuses to remove a changed timeout or permanent ban.
+The docket shows the ruling and release result separately.
+
+Consistency is the share of closed case pairs with the same rule and the same final verdict.
+An overturn changes that final verdict. There is no score when no comparable pair exists.
+The score is a record of agreement, not a claim that a ruling was correct.
+
+## Model advice and fallback
+
+The default is deterministic and needs no key.
+Simple rule keywords choose neutral charge text and a matching closed precedent.
+The optional model writes charge text and selects from supplied precedent IDs.
 It cannot change the rule, verdict, vote weight or timeout duration.
-Consistency measures agreement among closed case pairs with the same rule.
-It returns no score when there are no comparable pairs.
 
-## Helix actions and appeals
-
-A guilty ruling records a timeout request before it sends one verdict.
-The timeout limit is 600 seconds. No permanent ban or message deletion is available.
-The action log records pending, sent, failed or unknown status and the adapter mode.
-A dry run marked sent means that a local simulation completed.
-A fake result means that the local fake server accepted the request.
-Neither is evidence of a real Twitch action.
-
-The client checks both HTTP status and chat delivery status.
-It uses a four-second network deadline and does not retry writes automatically.
-A saved pending action becomes unknown after restart. It is not sent again.
-An owner must check an unknown result in Twitch before any manual recovery.
-There is no operator retry button yet.
-
-An overturn updates the final precedent and requests removal of the owned timeout.
-The client compares the saved receipt with the current timeout before removal.
-It refuses to remove a changed timeout or a permanent ban.
-An expired timeout needs no removal. The docket keeps the release result separate from the ruling.
-An upheld appeal keeps the original verdict and sends one appeal update.
-
-The live factory is createLiveHelix in src/helix.ts.
-It needs an explicit owner gate, a broadcaster OAuth token provider and matching broadcaster and moderator IDs.
-The default CLI does not enable it. DRY_RUN=0 stops with an owner-needed message.
-OAuth and the real EventSub adapter must be finished before the live gate can open.
-
-## Model and fallback
-
-The default is deterministic and needs no model key.
-Rule keywords select a neutral charge and the nearest closed precedent.
-Fallback advice appears at once. The vote loop never waits for a model response.
-
-To enable optional model advice later, set MODEL_ENABLED=1, OPENAI_MODEL and OPENAI_API_KEY in the process environment.
-Do not put a key in this repository.
+To enable it later, set MODEL_ENABLED=1, OPENAI_MODEL and OPENAI_API_KEY in the process environment.
 Use a model that supports strict structured output for Chat Completions.
-The model request sends the reported text, reason, rule and a short list of closed precedents.
-It sends no credentials or voter names in the prompt.
+Never put a key in this repository.
+The request sends the reported text, reason, rule and selected precedent records to the model service.
 
-The response must match a strict JSON schema and pass local checks.
-The client makes at most two attempts with a four-second deadline per attempt.
-Missing keys, refusals, invalid output, timeouts and service errors use the deterministic fallback.
-An invented precedent ID is rejected.
-No paid model call was made during this build.
+Fallback advice appears at once. Voting does not wait for the model.
+Each model attempt has a four-second deadline. There is at most one retry.
+Missing keys, refusals, invalid output and service errors keep the fallback.
+Invented precedent IDs are rejected.
+No paid model call was made during the recorded build. The live model path has not been verified.
 
-To check the missing-key loop, run the following command and open the overlay.
+## Twitch app setup
 
-```sh
-OPENAI_API_KEY= MODEL_ENABLED=1 npm run sim
+These steps prepare the app registration. They do not enable the unfinished live path.
+
+1. Enable two-factor authentication in [Twitch security settings](https://www.twitch.tv/settings/security) if needed.
+2. Open the [developer console](https://dev.twitch.tv/console/apps) and register an app.
+3. Use Overrule as the name if available. Select Chat Bot as the category.
+4. Add `http://localhost:3000/auth/callback` as the planned OAuth redirect URL.
+5. Save the client ID and secret to `~/yc-w27-work/.secrets/twitch-app.json` using the shape below.
+
+```json
+{
+  "client_id": "REPLACE_LOCALLY",
+  "client_secret": "REPLACE_LOCALLY",
+  "redirect_uri": "http://localhost:3000/auth/callback"
+}
 ```
 
-The optional browser check runs the fake Helix and appeal flow with an empty key.
-Check disk and memory first. It uses the approved sprint browser on CDP port 9252.
+Protect the external folder and file after saving them.
 
 ```sh
+chmod 700 ~/yc-w27-work/.secrets
+chmod 600 ~/yc-w27-work/.secrets/twitch-app.json
+```
+
+The loader handles an absent file without exposing credentials.
+Imports, tests and the default runtime do not read it.
+The live factory reads it only when explicitly called after the owner gate opens.
+The client secret is not a user access token.
+
+The planned user-token scopes are `user:read:chat`, `user:write:chat` and `moderator:manage:banned_users`.
+The current live Helix factory requires matching broadcaster and moderator IDs for its timeout ownership check.
+Use the broadcaster test account when that path is ready.
+
+OAuth state checks, token storage, refresh and real EventSub delivery still need implementation.
+The registered callback route and a working /auth route are not present yet.
+After that work, the owner must authorize the account and verify a real chat message, timeout and appeal removal.
+Keep live actions disabled until those gates are reviewed.
+
+## Tests and build evidence
+
+The latest recorded verification passed **43 unit and HTTP tests** and the TypeScript check on 26 October 2026.
+No tests were rerun for this documentation-only revision.
+
+```sh
+npm ci --ignore-scripts
+npm run check
+npm test
+```
+
+The lock file pins three development packages. The installed set used about 25 MB on the build Mac.
+Unit tests use Node's built-in runner and need no development package install.
+The type check needs the development packages.
+
+Browser checks verified the 1080p vote loop, operator keys, SSE recovery, appeals and the docket.
+The fake-server browser flow also passed with an empty model key.
+The optional scripts use the sprint browser on CDP port 9252 and close their own tabs.
+
+```sh
+node scripts/verify-browser.mjs
+node scripts/verify-operator.mjs
 OPENAI_API_KEY= MODEL_ENABLED=1 OPENAI_MODEL=test-only node scripts/verify-day45.mjs
 ```
 
-G5 passed without a model key. The local fake-server action checks passed.
-G4 still needs a real timeout on the owner test channel.
+On the build Mac, run the following checks before an install, test or browser run.
+Do not proceed below 20 GB available or 25 percent free memory.
 
-## Twitch setup later
+```sh
+df -g /System/Volumes/Data
+memory_pressure | tail -1
+```
 
-Register the app and save the credentials in the external secrets file named in the sprint plan.
-The optional loader reads ~/yc-w27-work/.secrets/twitch-app.json only when called.
-A missing file returns no credentials. Invalid input returns a generic error.
-Imports, the simulator, tests and local server do not read the secrets file.
-Never paste credentials into this repository or a log.
-
-Live work still needs OAuth state checks, token refresh, secure token storage, WebSocket subscriptions, reconnect handling and revocation handling.
-The planned scopes are `user:read:chat`, `user:write:chat` and `moderator:manage:banned_users`.
-The live gate must show one real channel message. The later action gate must show one approved test-account timeout.
-Neither live gate has passed in this build.
-The owner must use the broadcaster account for the current timeout ownership check.
-
-## Build record
-
-Tests were written before the engine implementation.
-All 43 unit and HTTP tests and the TypeScript check passed on 26 October 2026.
-The 1080p browser check showed card, voting, result and gavel without a refresh.
-The operator browser check confirmed Space, A and V, including veto precedence.
-The day 4 and day 5 browser check showed a fake timeout, appeal release and a changed consistency score.
-Screenshots are in docs/screenshots.
-The optional browser checks in scripts use the sprint browser on CDP port 9252.
-Each browser check starts its own local server and closes its own tab when done.
-Validation results are recorded in docs/codex-log.md and the lane report.
-Do not use the plan's full-product submission claims until the corresponding work is complete.
+See [the build log](docs/codex-log.md), [the docket screenshot](docs/screenshots/day45-docket.png) and the tests in test/.
+The repository began empty. No TapVow source or package was used.
 
 Codex session ID `01a17712-fe31-70e0-a11c-9b80e5183106`.
 
-## API references
+## Storage and limits
 
-The HTTP client follows the [Twitch Helix reference](https://dev.twitch.tv/docs/api/reference/).
-Timeout requests always include a duration. Appeal removal checks the current timeout first.
-The model request uses the [OpenAI structured output guide](https://developers.openai.com/api/docs/guides/structured-outputs).
+This is a local prototype. Use synthetic messages and test accounts.
+It holds chat text on disk. Closing a case clears text from the current snapshot, but older audit records retain it.
+The appeal-window text purge and 14-day retention tool are not implemented.
+
+Each automatic demo process writes a fresh data/demo-*.jsonl journal.
+Manual mode restores data/operator-audit.jsonl.
+Writes are flushed before the memory index changes. Invalid or incomplete records stop startup.
+Use one process per journal. There is no cross-process lock, compaction or journal size limit.
+Long-session chat pacing and manual recovery still need work.
+
+There is no hosted service, real-channel verification, OBS rehearsal or verified user-impact claim.
+G2 and G3 passed offline. G5 passed with no model key.
+G1 and G4 remain open for real Twitch chat and an approved real timeout.
+
+## Owner finish steps
+
+Complete Twitch 2FA and app registration if needed.
+After the live code is ready, authorize the test account and verify the live gates.
+Run a short Twitch test stream and record the app functioning there.
+Record the Codex build thread. Publish the repository and upload a public YouTube video under three minutes.
+Complete the Devpost form, submit as an individual and save the confirmation.
+No publication or submission has been performed by this build thread.
+
+## References and license
+
+The API adapters follow the [Twitch Helix reference](https://dev.twitch.tv/docs/api/reference/) and the [OpenAI structured output guide](https://developers.openai.com/api/docs/guides/structured-outputs).
+Submission requirements are in the [official hackathon rules](https://twitchcon-codex.devpost.com/rules).
+
+[MIT license](LICENSE).
