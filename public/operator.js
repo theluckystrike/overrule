@@ -12,6 +12,10 @@ function render() {
   $('close').disabled = !connected || c?.state !== 'voting';
   $('approve').disabled = $('veto').disabled = !connected || c?.state !== 'awaiting_approval';
   $('replay').disabled = !connected || s?.replaying || !!s?.cases.some(c => c.state !== 'closed');
+  $('appeal-controls').hidden = c?.state !== 'appeal_window';
+  $('appeal-status').textContent = c?.appealed ? 'The accused requested an appeal. Review the ruling.' : 'The accused has two minutes to appeal. This button simulates their chat command.';
+  $('demo-appeal').disabled = !connected || c?.state !== 'appeal_window' || c?.appealed || s?.actionMode === 'live';
+  $('uphold').disabled = $('overturn').disabled = !connected || c?.state !== 'appeal_window' || !c?.appealed;
   $('voters').replaceChildren(...Object.values(c?.votes ?? {}).map(v => {
     const li = document.createElement('li'); li.textContent = `${v.name} · ${v.choice === 'guilty' ? 'Guilty' : 'Not guilty'} ×${v.weight}${v.changed ? ' · Changed' : ''}`; return li;
   }));
@@ -24,7 +28,7 @@ async function post(path, body) {
     $('feedback').textContent = '';
   } catch (e) { $('feedback').textContent = e.message; }
 }
-for (const action of ['close', 'approve', 'veto']) $(action).onclick = () => {
+for (const action of ['close', 'approve', 'veto', 'demo-appeal', 'uphold', 'overturn']) $(action).onclick = () => {
   if (!$(action).disabled && snapshot?.current) void post('/api/control', { action, caseId: snapshot.current.id });
 };
 $('replay').onclick = () => { if (!$('replay').disabled) void post('/api/replay', {}); };

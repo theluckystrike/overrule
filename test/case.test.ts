@@ -106,3 +106,11 @@ test('invalid clocks cannot corrupt state', () => {
   assert.throws(() => e.advance('bad-time', id, 'awaiting_approval', NaN), /clock/);
   assert.equal(e.get(id).state, 'voting');
 });
+test('analysis and action audit survive reads and cannot rewrite final verdicts', () => {
+  const e = setup(); const id = voting(e);
+  e.annotate(id, { charge: 'Possible spam', confidence: 0.5, precedentId: null, source: 'fallback' }, 1001);
+  e.effect(id, 'timeout', { status: 'pending', mode: 'dry-run' }, 1002);
+  assert.equal(e.get(id).analysis?.source, 'fallback');
+  assert.equal(e.get(id).effects?.timeout?.status, 'pending');
+  assert.throws(() => e.effect(id, 'timeout', { status: 'pending', mode: 'dry-run' }, 1003), /already/);
+});

@@ -13,7 +13,7 @@ function render(s) {
   $('phase').textContent = names[c.state];
   $('accused').textContent = `@${c.message.login}`;
   $('message').textContent = c.message.text || 'The appeal window has ended. Message hidden.';
-  $('reason').textContent = c.reason || 'Case record closed';
+  $('reason').textContent = c.analysis?.charge || c.reason || 'Case record closed';
   const votes = Object.values(c.votes);
   const guilty = votes.filter(v => v.choice === 'guilty').reduce((n, v) => n + v.weight, 0);
   const innocent = votes.filter(v => v.choice === 'notguilty').reduce((n, v) => n + v.weight, 0);
@@ -26,7 +26,8 @@ function render(s) {
   $('contested').hidden = !c.contested;
   $('verdict').hidden = !c.verdict;
   $('verdict-text').textContent = c.verdict === 'guilty' ? 'Guilty' : 'No action';
-  $('verdict-note').textContent = c.verdict === 'guilty' ? '10 minute timeout intent · Dry run only' : 'No timeout intent · Dry run only';
+  const effect = c.overturned ? c.effects?.release : c.effects?.timeout;
+  $('verdict-note').textContent = c.overturned ? `Appeal overturned · ${effect?.status === 'sent' ? 'Timeout released' : 'See the docket for action status'}` : c.verdict === 'guilty' ? `${s.actionMode === 'dry-run' ? 'Dry run' : 'Timeout'} · ${effect?.status ?? 'pending'}` : 'No timeout action';
   $('case-hint').textContent = s.cases.filter(c => c.state === 'voting').length > 1 ? `Add case ID ${c.id}` : '';
   if (s.gavel && lastGavel !== c.id) {
     lastGavel = c.id; sessionStorage.setItem('overrule-gavel', c.id);

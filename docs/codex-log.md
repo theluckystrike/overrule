@@ -78,3 +78,35 @@ The case snapshot returned and the gavel did not repeat.
 The browser harness normalizes only its own tab to account for the shared browser zoom.
 It checks a 1920 by 1080 layout without changing the shared profile.
 G3 passed for the offline simulator. No manual refresh was needed for the court loop.
+
+## Day 29 and 30 Oct work
+
+Completed ahead of schedule on 26 October 2026 in the same Codex thread.
+The owner requested Helix actions, appeal and docket flows, a model fallback, consistency and tests.
+Used the OpenAI Docs skill and the official Twitch reference to check request shapes.
+No credentials file was opened. No paid model call or live Twitch call was made.
+
+Added an injected Helix client and a local fake Helix HTTP server for tests.
+Added timeout, verdict and owned-timeout removal requests.
+Added durable action states and receipts. A restart does not resend an unconfirmed action.
+Added operator appeal controls and a live local docket.
+Added strict model output checks, a four-second per-attempt deadline, one retry and deterministic fallback.
+Model advice cannot change the verdict, rule or timeout duration.
+The default runtime stays in dry run mode. The live factory stays behind the owner gate.
+
+All 43 unit and HTTP tests passed. The TypeScript check passed.
+Tests cover each Helix request, dropped chat, errors, request deadlines and changed-ban protection.
+Tests also cover restart recovery, model validation, missing keys, fallback, appeal outcomes and consistency.
+The fake-server browser run approved two cases and overturned one.
+The docket showed 0 percent agreement for the two same-rule cases with different final rulings.
+That run used an empty model key and showed fallback advice.
+The overlay browser check still reached the gavel at 1920 by 1080 without a refresh.
+
+G5 passed with the model key gone.
+The fake-server action gate passed. It is not the real G4 gate.
+G1 and G4 still need OAuth, real EventSub and the owner test-channel checks.
+The optional paid model path has only fake-response tests so far.
+
+Disk checks showed 20 to 21 GB available. Free memory stayed at or above 61 percent.
+No install was needed. Only the approved CDP browser was used.
+The checks closed their own tabs and local servers.

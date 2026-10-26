@@ -3,6 +3,22 @@ import { dirname } from 'node:path';
 import type { CaseFile } from './case.ts';
 
 export interface RecordEntry { version: 1; op: string; action: string; at: number; case: CaseFile }
+function validExtras(c: CaseFile): boolean {
+  if (c.analysis) {
+    const a = c.analysis;
+    if (typeof a.charge !== 'string' || a.charge.length > 180 || !Number.isFinite(a.confidence) || a.confidence < 0 || a.confidence > 1
+      || !['fallback', 'model'].includes(a.source) || !(a.precedentId === null || typeof a.precedentId === 'string')) return false;
+  }
+  if (c.effects) {
+    if (typeof c.effects !== 'object' || Array.isArray(c.effects)) return false;
+    for (const [name, e] of Object.entries(c.effects)) {
+      if (!['timeout', 'verdict', 'release', 'appealVerdict'].includes(name) || !e || !['pending', 'sent', 'failed', 'unknown'].includes(e.status)
+        || !['dry-run', 'fake', 'live'].includes(e.mode) || (e.detail !== undefined && typeof e.detail !== 'string')) return false;
+      if (e.receipt && (!Number.isFinite(Date.parse(e.receipt.createdAt)) || !Number.isFinite(Date.parse(e.receipt.endsAt)) || typeof e.receipt.reason !== 'string')) return false;
+    }
+  }
+  return true;
+}
 function validRecord(r: RecordEntry): boolean {
   const c = r.case;
   const states = ['open', 'evidence', 'voting', 'awaiting_approval', 'ruling', 'appeal_window', 'closed'];
@@ -18,7 +34,7 @@ function validRecord(r: RecordEntry): boolean {
     && [c.jury, c.verdict].every(v => v === null || v === 'guilty' || v === 'notguilty')
     && [0, 600].includes(c.timeoutSeconds)
     && (c.state !== 'voting' || Number.isFinite(c.deadline))
-    && (c.state !== 'appeal_window' || Number.isFinite(c.appealDeadline));
+    && (c.state !== 'appeal_window' || Number.isFinite(c.appealDeadline)) && validExtras(c);
 }
 /** One writer per journal. Each committed mutation is also its audit entry. */
 export class Journal {

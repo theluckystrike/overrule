@@ -16,6 +16,10 @@ test('HTTP serves overlay and SSE snapshots, protects controls and reconnects', 
     const overlay = await (await fetch(`${base}/overlay`)).text();
     assert.match(overlay, /case-card/); assert.match(overlay, /gavel/);
     assert.doesNotMatch(overlay, /operator-token/);
+    const docket = await (await fetch(`${base}/docket`)).text();
+    assert.match(docket, /CONSISTENCY/);
+    assert.match(docket, /docket.js/);
+    assert.doesNotMatch(docket, /operator-token/);
     const page = await (await fetch(`${base}/operator`)).text();
     const token = /name="operator-token" content="([a-f0-9]+)"/.exec(page)![1];
     const stream = await fetch(`${base}/events`, { signal: abort.signal });

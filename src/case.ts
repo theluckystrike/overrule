@@ -1,5 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { Journal } from './precedent.ts';
+import type { Analysis } from './brain.ts';
+export interface Effect { status: 'pending' | 'sent' | 'failed' | 'unknown'; mode: 'dry-run' | 'fake' | 'live'; detail?: string; receipt?: { createdAt: string; endsAt: string; reason: string } }
+export type EffectName = 'timeout' | 'verdict' | 'release' | 'appealVerdict';
 
 export type State = 'open' | 'evidence' | 'voting' | 'awaiting_approval' | 'ruling' | 'appeal_window' | 'closed';
 export type Verdict = 'guilty' | 'notguilty';
@@ -11,6 +14,8 @@ export interface CaseFile {
   votes: Record<string, { name: string; choice: Verdict; weight: number; changed: boolean }>;
   arrivals: number[]; contested: boolean; jury: Verdict | null; verdict: Verdict | null;
   timeoutSeconds: number; appealed: boolean; overturned: boolean;
+  analysis?: Analysis;
+  effects?: Partial<Record<EffectName, Effect>>;
 }
 const edges: Partial<Record<State, State>> = {
   open: 'evidence', evidence: 'voting', voting: 'awaiting_approval',
@@ -23,6 +28,19 @@ export class CaseEngine {
     this.journal = journal; this.streamId = streamId;
   }
   list(): CaseFile[] { return this.journal.cases(); }
+  annotate(id: string, analysis: Analysis, at: number): void {
+    const c = this.get(id);
+    if (!['open', 'evidence', 'voting'].includes(c.state)) return;
+    c.analysis = structuredClone(analysis);
+    this.write(`analysis-${id}-${analysis.source}`, c, 'analysis', at);
+  }
+  effect(id: string, name: EffectName, effect: Effect, at: number): void {
+    const c = this.get(id); c.effects ??= {};
+    const prior = c.effects[name];
+    if (prior && (prior.status !== 'pending' || effect.status === 'pending')) throw new Error('Effect already recorded');
+    c.effects[name] = structuredClone(effect);
+    this.write(`effect-${id}-${name}-${effect.status}`, c, `effect_${name}_${effect.status}`, at);
+  }
   operation(op: string): CaseFile | undefined { return this.duplicate(op); }
   get(id: string): CaseFile {
     const c = this.list().find(c => c.id === id);

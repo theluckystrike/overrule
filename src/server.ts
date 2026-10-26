@@ -5,6 +5,7 @@ import { pathToFileURL } from 'node:url';
 import { VoteLoop, type Control } from './loop.ts';
 import { Journal } from './precedent.ts';
 import { replay } from './replay.ts';
+import { configuredBrain } from './brain.ts';
 
 export function createApp(loop: VoteLoop, options: { autoStart?: boolean; tick?: boolean } = {}) {
   const token = randomBytes(32).toString('hex');
@@ -41,7 +42,7 @@ export function createApp(loop: VoteLoop, options: { autoStart?: boolean; tick?:
         for await (const chunk of req) { body += chunk; if (Buffer.byteLength(body) > 2048) { json(413, { error: 'Request too large' }); return; } }
         let input;
         try { input = JSON.parse(body); } catch { json(400, { error: 'Invalid request' }); return; }
-        if (!input || !['close', 'approve', 'veto'].includes(input.action) || typeof input.caseId !== 'string') { json(400, { error: 'Invalid control' }); return; }
+        if (!input || !['close', 'approve', 'veto', 'demo-appeal', 'uphold', 'overturn'].includes(input.action) || typeof input.caseId !== 'string') { json(400, { error: 'Invalid control' }); return; }
         try { loop.control(input.action as Control, input.caseId); json(200, { ok: true }); }
         catch (e) { json(409, { error: e instanceof Error ? e.message : 'Control rejected' }); }
         return;
@@ -62,6 +63,7 @@ export function createApp(loop: VoteLoop, options: { autoStart?: boolean; tick?:
         '/': ['operator.html', 'text/html'], '/operator': ['operator.html', 'text/html'],
         '/overlay': ['overlay.html', 'text/html'], '/overlay.js': ['overlay.js', 'text/javascript'],
         '/operator.js': ['operator.js', 'text/javascript'], '/overlay.css': ['overlay.css', 'text/css'],
+        '/docket': ['docket.html', 'text/html'], '/docket.js': ['docket.js', 'text/javascript'],
       };
       const file = files[url.pathname];
       if (!file) { res.writeHead(404); res.end('Not found'); return; }
@@ -83,9 +85,10 @@ export function createApp(loop: VoteLoop, options: { autoStart?: boolean; tick?:
 }
 
 export function startServer(autoDemo = false) {
+  if (process.env.DRY_RUN === '0') throw new Error('OWNER-NEEDED. Live OAuth and channel gates are not complete. DRY_RUN must remain on');
   // A new demo process gets a new journal. Restart never inherits a half-finished show.
   const path = autoDemo ? `data/demo-${Date.now()}-${randomBytes(4).toString('hex')}.jsonl` : 'data/operator-audit.jsonl';
-  const loop = new VoteLoop({ journal: new Journal(path), autoApprove: autoDemo });
+  const loop = new VoteLoop({ journal: new Journal(path), autoApprove: autoDemo, brain: configuredBrain() });
   const app = createApp(loop, { autoStart: autoDemo });
   app.server.listen(3000, '127.0.0.1', () => {
     console.log('Overrule ready on port 3000. Open /overlay or /operator.');

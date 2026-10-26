@@ -16,6 +16,12 @@ test('journal restores state and operation ids and refuses damaged records', () 
     assert.equal(restored.list().length, 1);
     restored.open('event1', { id: 'm', userId: 'u', login: 'alt', text: 'test', at: 1000 }, 'Be kind', 1000);
     assert.equal(readFileSync(path, 'utf8').trim().split('\n').length, 1);
+    const id = restored.list()[0].id;
+    restored.annotate(id, { charge: 'Possible harassment', confidence: 0.5, precedentId: null, source: 'fallback' }, 1000);
+    restored.effect(id, 'timeout', { status: 'pending', mode: 'dry-run' }, 1000);
+    const afterRestart = new CaseEngine(new Journal(path), 'test');
+    assert.equal(afterRestart.get(id).effects?.timeout?.status, 'pending');
+    assert.equal(afterRestart.get(id).analysis?.source, 'fallback');
     assert.equal(nearest(restored.list(), 'Be kind'), null);
     assert.equal(consistency([]), null);
     appendFileSync(path, '{broken');
