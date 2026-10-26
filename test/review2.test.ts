@@ -42,8 +42,8 @@ test('N2 authorization forces account choice and expected login rejects a stored
     const restored = new TwitchOAuth(mock.app, store, { baseUrl: mock.base + '/oauth2/' }); await restored.initialize();
     const previous = process.env.OVERRULE_EXPECTED_LOGIN;
     try {
-      process.env.OVERRULE_EXPECTED_LOGIN = 'different-channel';
-      assert.throws(() => liveRuntime(restored, mock.app, { journal: new Journal() }), /expected channel/i);
+      process.env.OVERRULE_EXPECTED_LOGIN = 'different_channel';
+      assert.throws(() => liveRuntime(restored, mock.app, { journal: new Journal() }), /does not match expected/i);
     } finally { if (previous === undefined) delete process.env.OVERRULE_EXPECTED_LOGIN; else process.env.OVERRULE_EXPECTED_LOGIN = previous; }
   } finally { await mock.close(); }
 });

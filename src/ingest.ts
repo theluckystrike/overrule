@@ -3,7 +3,7 @@ import { CaseEngine } from './case.ts';
 
 export interface ChatEvent {
   eventId: string; messageId: string; channelId: string; userId: string;
-  login: string; text: string; at: number; role: Role; replyTo?: string; replyLogin?: string; subscriber?: boolean;
+  login: string; text: string; at: number; role: Role; replyTo?: string; replyLogin?: string; subscriber?: boolean; guest?: boolean; sourceChannelId?: string;
 }
 export function normalize(raw: unknown): ChatEvent | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -14,12 +14,15 @@ export function normalize(raw: unknown): ChatEvent | null {
   if (!fields.every(v => typeof v === 'string' && v.length > 0 && v.length <= 2000)) return null;
   const at = Date.parse(m.message_timestamp);
   if (!Number.isFinite(at)) return null;
-  const badges = Array.isArray(e.badges) ? e.badges : [];
-  const role: Role = e.chatter_user_id === e.broadcaster_user_id ? 'broadcaster' : badges.some((b: any) => ['moderator', 'lead_moderator'].includes(b?.set_id)) ? 'moderator' : badges.some((b: any) => ['staff', 'admin', 'global_mod'].includes(b?.set_id)) ? 'twitch-staff' : badges.some((b: any) => b?.set_id === 'vip') ? 'vip' : 'viewer';
+  const sourceChannelId = typeof e.source_broadcaster_user_id === 'string' && e.source_broadcaster_user_id ? e.source_broadcaster_user_id : undefined;
+  const guest = !!sourceChannelId && sourceChannelId !== e.broadcaster_user_id;
+  const sourceBadges = sourceChannelId && Array.isArray(e.source_badges) ? e.source_badges : [];
+  const badges = [...(Array.isArray(e.badges) ? e.badges : []), ...sourceBadges];
+  const role: Role = e.chatter_user_id === e.broadcaster_user_id || e.chatter_user_id === sourceChannelId || sourceBadges.some((b: any) => b?.set_id === 'broadcaster') ? 'broadcaster' : badges.some((b: any) => ['moderator', 'lead_moderator'].includes(b?.set_id)) ? 'moderator' : badges.some((b: any) => ['staff', 'admin', 'global_mod'].includes(b?.set_id)) ? 'twitch-staff' : badges.some((b: any) => b?.set_id === 'vip') ? 'vip' : 'viewer';
   return {
     eventId: m.message_id, messageId: e.message_id, channelId: e.broadcaster_user_id,
     userId: e.chatter_user_id, login: e.chatter_user_login.toLowerCase(), text: e.message.text,
-    at, role, subscriber: badges.some((b: any) => ['subscriber', 'founder'].includes(b?.set_id)), replyTo: typeof e.reply?.parent_message_id === 'string' ? e.reply.parent_message_id : undefined,
+    at, role, guest, sourceChannelId, subscriber: badges.some((b: any) => ['subscriber', 'founder'].includes(b?.set_id)), replyTo: typeof e.reply?.parent_message_id === 'string' ? e.reply.parent_message_id : undefined,
     replyLogin: typeof e.reply?.parent_user_login === 'string' ? e.reply.parent_user_login.toLowerCase() : undefined,
   };
 }
@@ -68,6 +71,11 @@ export class Ingest {
   constructor(engine: CaseEngine, channelId: string, options: { subscribersOnly?: boolean } = {}) { this.engine = engine; this.channelId = channelId; this.options = options; }
   accept(c: ChatEvent, now: number): { ok: boolean; detail: string; caseId?: string } {
     if (c.channelId !== this.channelId) return { ok: false, detail: 'Wrong channel' };
+    if (c.guest) {
+      for (const [id, m] of this.messages) if (m.userId === c.userId) this.messages.delete(id);
+      for (const [id, report] of this.reports) if (report.evidence.userId === c.userId) this.reports.delete(id);
+      return { ok: true, detail: 'Shared chat guest ignored' };
+    }
     if (c.at > now + 5000 || now - c.at > 120000) return { ok: false, detail: 'Stale event' };
     for (const [id, at] of this.seen) if (now - at > 120000) this.seen.delete(id);
     for (const [id, m] of this.messages) if (now - m.at > 120000) this.messages.delete(id);
@@ -108,8 +116,18 @@ export class Ingest {
         let reason: string;
         if (command === '!case') {
           if (!['moderator', 'broadcaster'].includes(c.role)) throw new Error('Only a mod or broadcaster can use !case');
-          const login = (args.shift() ?? '').replace(/^@/, '').toLowerCase();
-          evidence = [...this.messages.values()].filter(m => m.login === login).sort((a, b) => b.at - a.at)[0];
+          if (c.replyTo) {
+            evidence = this.messages.get(c.replyTo);
+            if (args[0]?.startsWith('@')) {
+              const login = args.shift()!.slice(1).toLowerCase();
+              if (!evidence || login !== evidence.login) throw new Error('Reply target does not match the parent author');
+            }
+          } else {
+            const target = args.shift() ?? '';
+            if (!/^@[a-zA-Z0-9_]+$/.test(target)) throw new Error('Use @login for a case target or reply to its message');
+            const login = target.slice(1).toLowerCase();
+            evidence = [...this.messages.values()].filter(m => m.login === login).sort((a, b) => b.at - a.at)[0];
+          }
           reason = args.join(' ');
         } else {
           const messageId = c.replyTo ?? args.shift();

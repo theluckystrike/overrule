@@ -82,6 +82,7 @@ test('welcome deadline reconnects instead of hanging on an idle socket', async (
   } finally { source.stop(); await mock.close(); }
 });
 test('live runtime routes mock chat on token channel to operator-approved Helix', async () => {
+  const previousLogin = process.env.OVERRULE_EXPECTED_LOGIN; process.env.OVERRULE_EXPECTED_LOGIN = 'owner';
   const mock = await twitchMock(); const { auth } = await authorized(mock);
   const runtime = liveRuntime(auth, mock.app, { journal: new Journal(), allowActions: true, websocketUrl: mock.websocketUrl, subscriptionUrl: mock.base + '/eventsub/subscriptions', helixBaseUrl: mock.base + '/helix/' });
   try {
@@ -93,7 +94,7 @@ test('live runtime routes mock chat on token channel to operator-approved Helix'
     runtime.loop.control('close', id); runtime.loop.control('force-guilty', id);
     await until(() => runtime.loop.engine.get(id).effects?.verdict?.status === 'sent');
     assert.equal(mock.calls.filter(c => c.path.endsWith('/moderation/bans')).length, 1);
-  } finally { await runtime.stop(); await mock.close(); }
+  } finally { await runtime.stop(); await mock.close(); if (previousLogin === undefined) delete process.env.OVERRULE_EXPECTED_LOGIN; else process.env.OVERRULE_EXPECTED_LOGIN = previousLogin; }
 });
 test('hourly validator stops the session when authorization is revoked', async t => {
   const mock = await twitchMock(); const { auth } = await authorized(mock);

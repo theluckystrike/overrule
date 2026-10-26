@@ -77,6 +77,8 @@ A new fixture can start after the current case closes.
 ## Case rules
 
 - One active case in the court.
+- Shared chat guests cannot be tried or vote. Source room and source badges preserve guest broadcaster and moderator roles.
+- Guest messages are excluded from evidence, reports and commands.
 - Broadcaster and moderator immunity, including lead moderators. Staff, admin and global moderator badges are also immune. VIP immunity is on unless VIP_IMMUNITY=0 in live mode.
 - Viewer reports enter a private operator queue. Only operator promotion opens the case.
 - Evidence stays hidden in public snapshots until the operator selects Reveal evidence on stream.
@@ -99,6 +101,7 @@ A new fixture can start after the current case closes.
 
 The parser supports `!case @login reason`, `!report message-id reason`, reply reports, `!guilty`, `!notguilty`, `!vote guilty`, `!appeal` and `!docket`.
 Reply reports accept the parent mention that Twitch adds. Reports wait for operator promotion.
+A reply-based !case uses the parent message. An optional @login must match its author. Other !case commands require @login.
 The parser allows five commands per user in ten seconds.
 Only npm run live connects to Twitch. Fixture modes remain offline.
 
@@ -182,7 +185,9 @@ The user-token scopes are `user:read:chat`, `user:write:chat` and `moderator:man
 The current live Helix factory requires matching broadcaster and moderator IDs for its timeout ownership check.
 Verdicts post as the broadcaster. A separate bot identity is not supported.
 
-Set OVERRULE_EXPECTED_LOGIN to the test channel login before each live run. A saved or new identity that differs stops startup.
+Set OVERRULE_EXPECTED_LOGIN to the test channel login before each live run. It is required when real actions are enabled.
+A mismatched saved login is ignored for startup. The terminal names both logins and opens the local authorization flow again.
+A newly authorized account must match before the court starts.
 OAuth forces account confirmation. The terminal prints Connected to channel followed by the validated login.
 Run npm run live. If authorization is needed, open http://localhost:3000 and follow the Twitch link.
 OAuth checks state and the browser cookie. Tokens stay in ~/.config/overrule/tokens.json with mode 600.
@@ -191,13 +196,15 @@ EventSub subscribes to chat messages, message deletion, user chat clearing and f
 It handles keepalives, reconnect transfer, connection loss, duplicate notifications and revocation.
 OAuth retries network errors, timeouts, 429 and server errors with delays of 1, 2, 4 and 8 seconds, capped at 60 seconds.
 Subscription failures reconnect with backoff and jitter. Successful connection resets the delay.
-Authorization rejection still stops the live session. Temporary outages keep the local court available.
+EventSub waits at most four seconds for token access or refresh. An unused socket close reconnects.
+Authorization rejection still stops the live session. Temporary subscription outages keep the local court available.
+OAuth startup requests can still wait indefinitely during an outage.
 Fixtures cannot start in live mode.
 First verify real chat with dry run actions. Then use the explicit action flags for an owner-approved test-account timeout and appeal removal.
 
 ## Tests and build evidence
 
-The latest verification passed **79 tests** and the TypeScript check on 26 October 2026.
+The latest verification passed **86 tests** and the TypeScript check on 26 October 2026.
 Local HTTP and WebSocket mocks cover OAuth refresh, hourly validation, reconnects, revocation and live Helix wiring.
 These are repository mock servers. The Twitch CLI binary and real Twitch APIs were not run.
 Safety tests cover role immunity, report triage, subscriber votes, evidence removal, private HTTP access, no-quorum decisions and the live automatic-action guard.

@@ -134,3 +134,18 @@ Also fixed the socket-close race, portable token-test teardown and the distincti
 The socket-close and unsent-action tests failed before their fixes.
 All 79 tests and the TypeScript check passed after the fixes.
 No browser, OBS, paid model or real Twitch run was performed.
+
+## Third review fixes
+
+26 October 2026. Same Codex thread.
+The owner requested Shared Chat immunity and required channel selection, with small and safe medium fixes.
+Shared Chat source room and badges now preserve guest broadcaster and moderator roles.
+Guest messages cannot supply evidence, reports, commands or votes.
+Real actions require an expected login. A mismatched saved account returns to authorization and names both logins.
+Reply cases now use the parent message. Other case commands require @login.
+EventSub token access and refresh have a four-second deadline. Unused sockets reconnect. Stale subscription work cannot replace the recovered socket.
+Seven new regressions failed against a preserved copy of the prior commit.
+All 86 tests and the TypeScript check passed on the final code.
+The first full run caught an old test login that used a hyphen. It now uses a valid Twitch login.
+Disk initially had 19 GB available, so tests were held. The first ten-minute recheck showed 20 GB and allowed validation.
+No real Twitch credentials, browser, OBS or paid model call was used.

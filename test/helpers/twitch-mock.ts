@@ -9,6 +9,7 @@ export class MemoryTokens implements TokenStore {
 export async function twitchMock() {
   const calls: Array<{ path: string; method: string; body: any; authorization?: string }> = [];
   const faults = new Map<string, Array<number | 'timeout' | 'close' | 'body-timeout'>>();
+  let login = 'owner'; let userId = 'owner';
   let keepalive = 10;
   let access = 'mock-access-1'; let generation = 1; let scopes = [...REQUIRED_SCOPES]; let revoke = false; let welcome = true;
   const peers: WebSocket[] = []; const subscriptions: any[] = [];
@@ -29,7 +30,7 @@ export async function twitchMock() {
     }
     if (url.pathname === '/oauth2/validate') {
       if (revoke || req.headers.authorization !== `OAuth ${access}`) { res.writeHead(401); res.end('{}'); return; }
-      res.end(JSON.stringify({ client_id: 'mock-client', user_id: 'owner', login: 'owner', scopes, expires_in: 7200 })); return;
+      res.end(JSON.stringify({ client_id: 'mock-client', user_id: userId, login, scopes, expires_in: 7200 })); return;
     }
     if (req.headers.authorization !== `Bearer ${access}`) { res.writeHead(401); res.end('{}'); return; }
     if (url.pathname.endsWith('/eventsub/subscriptions')) { subscriptions.push(body); res.writeHead(202); res.end(JSON.stringify({ data: [{ id: 'sub', status: 'enabled' }] })); return; }
@@ -45,6 +46,7 @@ export async function twitchMock() {
   return { base, websocketUrl: base.replace('http:', 'ws:') + '/ws', calls, peers, subscriptions, send,
     app: { client_id: 'mock-client', client_secret: 'mock-secret', redirect_uri: 'http://localhost:3000/auth/callback' },
     fault: (path: string, ...values: Array<number | 'timeout' | 'close' | 'body-timeout'>) => { faults.set(path, values); },
+    identity: (nextLogin: string, nextUserId: string) => { login = nextLogin; userId = nextUserId; },
     keepalive: (seconds: number) => { keepalive = seconds; },
     expire: () => { access = 'expired'; }, revoke: () => { revoke = true; }, scopes: (s: string[]) => { scopes = s; }, welcome: (v: boolean) => { welcome = v; },
     close: () => { for (const peer of peers) peer.terminate(); ws.close(); server.closeAllConnections(); return new Promise<void>(r => server.close(() => r())); } };

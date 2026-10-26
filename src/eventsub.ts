@@ -28,11 +28,12 @@ export interface LiveEventSubOptions {
   token: () => Promise<string>; refreshAfter401?: (token: string) => Promise<void>;
   websocketUrl?: string; subscriptionUrl?: string; types?: string[];
   onFatal?: () => void; onStatus?: (status: string) => void;
-  reconnectDelayMs?: number; welcomeTimeoutMs?: number;
+  reconnectDelayMs?: number; welcomeTimeoutMs?: number; authorizationTimeoutMs?: number;
 }
 export class LiveEventSub implements ChatSource {
   private options?: LiveEventSubOptions;
   private active?: WebSocket;
+  private newest?: WebSocket;
   private sockets = new Set<WebSocket>();
   private timers = new Map<WebSocket, ReturnType<typeof setTimeout>>();
   private retry?: ReturnType<typeof setTimeout>;
@@ -57,13 +58,21 @@ export class LiveEventSub implements ChatSource {
     let queue = Promise.resolve();
     return new Promise<void>((resolve, reject) => {
       const fail = () => { if (this.stopped) return; this.stop(); o.onStatus?.('disconnected'); if (!settled) { settled = true; reject(new Error('EventSub authorization or transport failed')); } o.onFatal?.(); };
+      const authorize = async <T>(work: () => Promise<T>): Promise<T> => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          return await Promise.race([work(), new Promise<never>((_, reject) => {
+            timer = setTimeout(() => reject(new TransientError('Subscription authorization deadline')), o.authorizationTimeoutMs ?? 4000);
+          })]);
+        } finally { if (timer) clearTimeout(timer); }
+      };
       const subscribe = async (sessionId: string) => {
         for (const type of o.types ?? ['channel.chat.message', 'channel.chat.message_delete', 'channel.chat.clear_user_messages', 'channel.chat.clear']) {
-          let token = await o.token();
+          let token = await authorize(() => o.token());
           const request = () => fetch(endpoint, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(4000), headers: { Authorization: `Bearer ${token}`, 'Client-Id': o.clientId, 'Content-Type': 'application/json' }, body: JSON.stringify({ type, version: '1', condition: { broadcaster_user_id: o.broadcasterId, user_id: o.userId }, transport: { method: 'websocket', session_id: sessionId } }) });
           let response: Response;
           try { response = await request(); } catch { throw new TransientError('Subscription service unavailable'); }
-          if (response.status === 401 && o.refreshAfter401) { await o.refreshAfter401(token); token = await o.token(); try { response = await request(); } catch { throw new TransientError('Subscription service unavailable'); } }
+          if (response.status === 401 && o.refreshAfter401) { token = await authorize(async () => { await o.refreshAfter401!(token); return o.token(); }); try { response = await request(); } catch { throw new TransientError('Subscription service unavailable'); } }
           if (response.status === 401 || response.status === 403) throw new AuthorizationError('Subscription authorization rejected');
           if (response.status !== 202) throw new TransientError('Subscription service unavailable');
         }
@@ -82,7 +91,7 @@ export class LiveEventSub implements ChatSource {
         if (target.origin !== initial.origin) { fail(); return; }
         const old = this.active;
         const ws = new WebSocket(url, { maxPayload: 1024 * 1024, handshakeTimeout: o.welcomeTimeoutMs ?? 10000 });
-        this.sockets.add(ws);
+        this.sockets.add(ws); this.newest = ws;
         let welcomed = false; let activated = false; let keepalive = 10000;
         const watch = (ms: number) => {
           const prior = this.timers.get(ws); if (prior) clearTimeout(prior);
@@ -95,6 +104,7 @@ export class LiveEventSub implements ChatSource {
             const value = JSON.parse(data.toString());
             const kind = value.metadata?.message_type;
             if (kind === 'session_welcome') {
+              if (ws !== this.newest || ws.readyState !== WebSocket.OPEN) return;
               if (welcomed || typeof value.payload?.session?.id !== 'string') throw new Error();
               welcomed = true;
               const seconds = value.payload.session.keepalive_timeout_seconds;
@@ -103,11 +113,12 @@ export class LiveEventSub implements ChatSource {
               if (!transferred) {
                 try { await subscribe(value.payload.session.id); }
                 catch (error) {
+                  if (ws !== this.newest || ws.readyState !== WebSocket.OPEN) return;
                   if (error instanceof AuthorizationError) { fail(); return; }
                   ws.terminate(); reconnect(); return;
                 }
               }
-              if (this.stopped || ws.readyState !== WebSocket.OPEN) return;
+              if (this.stopped || ws !== this.newest || ws.readyState !== WebSocket.OPEN) return;
               this.active = ws; activated = true; attempts = 0;
               if (old && old !== ws) old.close();
               o.onStatus?.('connected');
@@ -135,7 +146,7 @@ export class LiveEventSub implements ChatSource {
           const timer = this.timers.get(ws); if (timer) clearTimeout(timer);
           this.timers.delete(ws); this.sockets.delete(ws);
           if (this.stopped) return;
-          if (code === 4001 || code === 4003) { fail(); return; }
+          if (code === 4001) { fail(); return; }
           if (ws === this.active || !activated) { if (ws === this.active) this.active = undefined; reconnect(); }
         });
       };
@@ -148,6 +159,6 @@ export class LiveEventSub implements ChatSource {
     for (const timer of this.timers.values()) clearTimeout(timer);
     this.timers.clear();
     for (const ws of this.sockets) ws.terminate();
-    this.sockets.clear(); this.active = undefined;
+    this.sockets.clear(); this.active = undefined; this.newest = undefined;
   }
 }

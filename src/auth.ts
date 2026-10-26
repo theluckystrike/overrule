@@ -126,6 +126,9 @@ export class TwitchOAuth implements OAuthProvider {
     if (this.tokens.expiresAt <= this.now() + 60000) await this.refresh();
     await this.validate(); return true;
   }
+  discardAuthorization(): void {
+    this.tokens = null; this.user = undefined; this.state = undefined; this.lastValidated = 0; this.invalid = false;
+  }
   identity(): Identity { if (!this.user || this.invalid) throw new AuthorizationError('OAuth authorization required'); return structuredClone(this.user); }
   private async refresh(): Promise<void> {
     if (!this.refreshing) {

@@ -1,7 +1,8 @@
 # Owner test
 
 Use the broadcaster test account and alt accounts. Do not use real viewers.
-Set OVERRULE_EXPECTED_LOGIN to the test channel login on every run, including runs with a saved token.
+Set OVERRULE_EXPECTED_LOGIN to the test channel login on every run, including runs with a saved token. Real actions refuse to start without it.
+If the saved account differs, read the login mismatch message and authorize the intended account on the local page.
 Start with dry run actions.
 
 ```sh
@@ -10,7 +11,7 @@ OVERRULE_EXPECTED_LOGIN=your_test_login npm run live
 
 Authorize the test account. Check the terminal line Connected to channel and its login.
 Confirm a normal chat message, a reply report and operator promotion.
-Check lead moderator immunity. Check a delete event using a separate case.
+Check lead moderator immunity and Shared Chat guest exclusion. Guest broadcasters, moderators and viewers must not enter the court or vote. Check a delete event using a separate case.
 
 Do not delete the target message during the timeout demonstration.
 Deleted evidence causes an attempted ruling to become expired with no timeout.
