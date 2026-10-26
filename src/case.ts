@@ -7,8 +7,8 @@ export type EffectName = 'timeout' | 'verdict' | 'release' | 'appealVerdict';
 export type State = 'open' | 'evidence' | 'voting' | 'awaiting_approval' | 'ruling' | 'appeal_window' | 'closed' | 'expired';
 export const terminal = (state: State) => state === 'closed' || state === 'expired';
 export type Verdict = 'guilty' | 'notguilty';
-export type Role = 'viewer' | 'moderator' | 'broadcaster';
-export interface Evidence { id: string; userId: string; login: string; text: string; at: number }
+export type Role = 'viewer' | 'moderator' | 'broadcaster' | 'vip';
+export interface Evidence { id: string; userId: string; login: string; text: string; at: number; role?: Role; deleted?: boolean }
 export interface CaseFile {
   id: string; streamId: string; state: State; message: Evidence; reason: string;
   rule: string; openedAt: number; updatedAt: number; deadline?: number; appealDeadline?: number;
@@ -18,6 +18,7 @@ export interface CaseFile {
   analysis?: Analysis;
   actionDeadline?: number;
   appealFiledBy?: string;
+  revealed?: boolean;
   effects?: Partial<Record<EffectName, Effect>>;
 }
 const edges: Partial<Record<State, State>> = {
@@ -27,13 +28,14 @@ const edges: Partial<Record<State, State>> = {
 export class CaseEngine {
   private journal: Journal;
   private streamId: string;
-  constructor(journal: Journal, streamId: string) {
-    this.journal = journal; this.streamId = streamId;
+  private options: { vipImmune?: boolean };
+  constructor(journal: Journal, streamId: string, options: { vipImmune?: boolean } = {}) {
+    this.journal = journal; this.streamId = streamId; this.options = options;
   }
   list(): CaseFile[] { return this.journal.cases(); }
   annotate(id: string, analysis: Analysis, at: number): void {
     const c = this.get(id);
-    if (!['open', 'evidence', 'voting'].includes(c.state)) return;
+    if (c.message.deleted || !['open', 'evidence', 'voting'].includes(c.state)) return;
     c.analysis = structuredClone(analysis);
     this.write(`analysis-${id}-${analysis.source}`, c, 'analysis', at);
   }
@@ -63,7 +65,9 @@ export class CaseEngine {
     const prior = this.duplicate(op); if (prior) return prior;
     if (!message.id || !message.userId || !message.login || !message.text || !Number.isFinite(message.at)) throw new Error('Invalid evidence');
     if (at - message.at > 120000 || message.at > at + 5000) throw new Error('Message too old or in future');
-    if (this.list().some(c => c.message.userId === message.userId && !terminal(c.state))) throw new Error('User has an active case');
+    if (message.deleted) throw new Error('Evidence removed');
+    if (message.role === 'broadcaster' || message.role === 'moderator' || (message.role === 'vip' && this.options.vipImmune !== false)) throw new Error('Target is immune');
+    if (this.list().some(c => !terminal(c.state))) throw new Error('There is an active case');
     if (!reason.trim() || reason.length > 500) throw new Error('Reason required with at most 500 characters');
     const c: CaseFile = {
       id: randomUUID(), streamId: this.streamId, state: 'open', message: structuredClone(message),
@@ -102,7 +106,7 @@ export class CaseEngine {
     if (!existing) c.arrivals.push(at);
     c.arrivals = c.arrivals.filter(t => t >= at - 10000);
     c.contested ||= c.arrivals.length > 40;
-    Object.defineProperty(c.votes, userId, { value: { name, choice, weight: role === 'viewer' ? 1 : 3, changed: existing }, enumerable: true, writable: true, configurable: true });
+    Object.defineProperty(c.votes, userId, { value: { name, choice, weight: role === 'moderator' || role === 'broadcaster' ? 3 : 1, changed: existing }, enumerable: true, writable: true, configurable: true });
     return this.write(op, c, existing ? 'vote_changed' : 'vote', at);
   }
   decide(op: string, id: string, verdict: Verdict, streamerApproved: boolean, at: number): CaseFile {
@@ -111,7 +115,7 @@ export class CaseEngine {
     if (!streamerApproved) throw new Error('Explicit streamer decision required');
     if (c.state !== 'awaiting_approval') throw new Error('Invalid state transition');
     if (verdict !== 'guilty' && verdict !== 'notguilty') throw new Error('Invalid verdict');
-    if (at >= (c.actionDeadline ?? c.openedAt + 300000)) return this.expire(id, at);
+    if (c.message.deleted || at >= (c.actionDeadline ?? c.openedAt + 300000)) return this.expire(id, at);
     c.verdict = verdict; c.timeoutSeconds = verdict === 'guilty' ? 600 : 0; c.state = 'ruling';
     return this.write(op, c, 'streamer_decision', at);
   }
@@ -137,6 +141,19 @@ export class CaseEngine {
       if (['open', 'evidence', 'voting', 'awaiting_approval'].includes(c.state) && at >= (c.actionDeadline ?? c.openedAt + 300000)) { this.expire(c.id, at); continue; }
       if (c.state === 'voting' && at >= c.deadline!) this.advance(`timer-vote-${c.id}`, c.id, 'awaiting_approval', at);
       if (c.state === 'appeal_window' && !c.appealed && at >= c.appealDeadline!) this.advance(`timer-close-${c.id}`, c.id, 'closed', at);
+    }
+  }
+  reveal(id: string, at: number): void {
+    const c = this.get(id);
+    if (c.message.deleted || !c.message.text) throw new Error('Evidence removed');
+    if (c.revealed) return;
+    c.revealed = true; this.write(`reveal-${id}`, c, 'evidence_revealed', at);
+  }
+  removeEvidence(matches: (message: Evidence) => boolean, at: number): void {
+    for (const c of this.list()) if (matches(c.message) && !c.message.deleted) {
+      c.message.text = ''; c.message.deleted = true; c.revealed = false;
+      c.reason = ''; c.analysis = undefined;
+      this.write(`remove-${c.id}`, c, 'evidence_removed', Math.max(at, c.updatedAt));
     }
   }
   expire(id: string, at: number): CaseFile {

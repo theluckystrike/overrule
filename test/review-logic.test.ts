@@ -41,5 +41,5 @@ test('Twitch reply mention prefix is removed only for the actual parent login', 
   await new FakeEventSub(new URL('../fixtures/reply-report.jsonl', import.meta.url)).start(raw => {
     const event = normalize(raw)!; assert.equal(ingest.accept(event, event.at).ok, true);
   });
-  assert.equal(e.list().length, 1); assert.equal(e.list()[0].message.id, 'target-reply');
+  assert.equal(e.list().length, 0); const report = ingest.queue(Date.parse('2026-10-26T00:00:00Z'))[0]; ingest.promote(report.id, report.evidence.at); assert.equal(e.list()[0].message.id, 'target-reply');
 });

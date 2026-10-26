@@ -45,7 +45,7 @@ export function liveRuntime(auth: TwitchOAuth, credentials: AppCredentials, opti
 } = {}) {
   const id = auth.identity().userId;
   const helix = options.allowActions ? new HttpHelix({ clientId: credentials.client_id, token: () => auth.accessToken(), refreshAfter401: token => auth.refreshAfter401(token), broadcasterId: id, moderatorId: id, liveEnabled: true, baseUrl: options.helixBaseUrl }) : new DryRunHelix();
-  const loop = new VoteLoop({ channelId: id, streamId: `live-${id}-${new Date().toISOString().slice(0, 10)}`, journal: options.journal ?? new Journal('data/live-audit.jsonl'), helix, brain: configuredBrain() });
+  const loop = new VoteLoop({ liveSource: true, vipImmune: process.env.VIP_IMMUNITY !== '0', subscribersOnly: process.env.SUBSCRIBER_VOTES_ONLY === '1', channelId: id, streamId: `live-${id}-${new Date().toISOString().slice(0, 10)}`, journal: options.journal ?? new Journal('data/live-audit.jsonl'), helix, brain: configuredBrain() });
   const app = createApp(loop, { live: true });
   let stopping: Promise<void> | undefined;
   const stop = () => stopping ??= (async () => { auth.stopValidation(); source.stop(); await app.stop().catch(() => {}); await loop.flush(); loop.dispose(); })();

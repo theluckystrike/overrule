@@ -5,6 +5,7 @@ let lastGavel = sessionStorage.getItem('overrule-gavel');
 const names = { open: 'Case opened', evidence: 'Evidence review', voting: 'Voting open', awaiting_approval: 'Streamer decision', ruling: 'Ruling delivered', appeal_window: 'Appeal window', closed: 'Case closed', expired: 'Ruling expired' };
 function render(s) {
   snapshot = s;
+  $('source-mode').textContent = s.liveSource ? `TWITCH · ${s.actionMode.toUpperCase()}` : 'OFFLINE DEMO';
   offset = s.now - Date.now();
   const c = s.current;
   $('idle').hidden = !!c; $('case-card').hidden = !c;
@@ -12,8 +13,8 @@ function render(s) {
   $('case-number').textContent = `CASE ${c.id.slice(0, 8).toUpperCase()}`;
   $('phase').textContent = names[c.state];
   $('accused').textContent = `@${c.message.login}`;
-  $('message').textContent = c.message.text || 'The appeal window has ended. Message hidden.';
-  $('reason').textContent = c.analysis?.charge || c.reason || 'Case record closed';
+  $('message').textContent = c.message.text || (c.message.deleted ? 'Evidence removed by moderation.' : 'Evidence hidden. Operator review required.');
+  $('reason').textContent = c.analysis?.charge || c.reason || `Review of ${c.rule}`;
   const votes = Object.values(c.votes);
   const guilty = votes.filter(v => v.choice === 'guilty').reduce((n, v) => n + v.weight, 0);
   const innocent = votes.filter(v => v.choice === 'notguilty').reduce((n, v) => n + v.weight, 0);

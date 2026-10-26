@@ -33,7 +33,7 @@ test('report by reply and stale evidence checks', () => {
   assert.equal(ingest.accept(base, 1000).ok, true);
   const report = { ...base, eventId: 'report', messageId: 'report-message', userId: 'reporter', login: 'reporter', text: '!report Spam', replyTo: 'target', at: 1001 };
   assert.equal(ingest.accept(report, 1001).ok, true);
-  assert.equal(e.list()[0].message.id, 'target');
+  assert.equal(e.list().length, 0); ingest.promote(ingest.queue(1001)[0].id, 1001); assert.equal(e.list()[0].message.id, 'target');
   assert.equal(ingest.accept({ ...report, eventId: 'stale', at: 1000 }, 121001).ok, false);
 });
 test('rate limit resets after ten seconds', () => {

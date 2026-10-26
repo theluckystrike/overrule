@@ -62,12 +62,13 @@ test('EventSub subscribes, deduplicates, hands off reconnect and resubscribes af
   try {
     await source.start(() => { received++; });
     assert.equal(mock.subscriptions[0].condition.broadcaster_user_id, 'owner');
+    assert.deepEqual(mock.subscriptions.map(s => s.type).sort(), ['channel.chat.message', 'channel.chat.message_delete', 'channel.chat.clear_user_messages', 'channel.chat.clear'].sort());
     const notice = { metadata: { message_type: 'notification', message_id: 'once' }, payload: {} };
     mock.send(notice); mock.send(notice); await until(() => received === 1);
     mock.send({ metadata: { message_type: 'session_reconnect' }, payload: { session: { reconnect_url: mock.websocketUrl + '?reconnect=1' } } });
     await until(() => mock.peers.length === 2 && mock.peers[0].readyState === 3);
-    assert.equal(mock.subscriptions.length, 1);
-    mock.peers[1].terminate(); await until(() => mock.subscriptions.length === 2);
+    assert.equal(mock.subscriptions.length, 4);
+    mock.peers[1].terminate(); await until(() => mock.subscriptions.length === 8);
     mock.send({ metadata: { message_type: 'revocation' }, payload: { subscription: { status: 'authorization_revoked' } } });
     await until(() => fatal);
   } finally { source.stop(); await mock.close(); }
@@ -89,7 +90,7 @@ test('live runtime routes mock chat on token channel to operator-approved Helix'
     for (const row of rows) { row.metadata.message_timestamp = new Date().toISOString(); row.payload.event.broadcaster_user_id = 'owner'; mock.send(row); }
     await until(() => Object.keys(runtime.loop.snapshot().current?.votes ?? {}).length === 3);
     const id = runtime.loop.snapshot().current!.id;
-    runtime.loop.control('close', id); runtime.loop.control('approve', id);
+    runtime.loop.control('close', id); runtime.loop.control('force-guilty', id);
     await until(() => runtime.loop.engine.get(id).effects?.verdict?.status === 'sent');
     assert.equal(mock.calls.filter(c => c.path.endsWith('/moderation/bans')).length, 1);
   } finally { await runtime.stop(); await mock.close(); }
@@ -126,7 +127,7 @@ test('missed keepalive replaces the connection and creates fresh subscriptions',
   const source = new LiveEventSub({ broadcasterId: 'owner', userId: 'owner', clientId: mock.app.client_id, token: () => auth.accessToken(), websocketUrl: mock.websocketUrl, subscriptionUrl: mock.base + '/eventsub/subscriptions', reconnectDelayMs: 10 });
   try {
     await source.start(() => {});
-    await until(() => mock.subscriptions.length === 2);
+    await until(() => mock.subscriptions.length === 8);
     assert.equal(mock.peers[0].readyState, 3);
   } finally { source.stop(); await mock.close(); }
 });

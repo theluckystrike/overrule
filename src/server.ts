@@ -10,12 +10,15 @@ import { configuredBrain } from './brain.ts';
 
 export function createApp(loop: VoteLoop, options: { autoStart?: boolean; tick?: boolean; live?: boolean } = {}) {
   const token = randomBytes(32).toString('hex');
-  const clients = new Set<ServerResponse>();
+  const clients = new Map<ServerResponse, boolean>();
   const abort = new AbortController();
   let started = false;
   const broadcast = (snapshot: ReturnType<VoteLoop['snapshot']>) => {
-    const frame = `id: ${snapshot.revision}\nevent: snapshot\ndata: ${JSON.stringify(snapshot)}\n\n`;
-    for (const res of clients) if (!res.write(frame)) { clients.delete(res); res.destroy(); }
+    for (const [res, operator] of clients) {
+      const s = operator ? loop.snapshot(true) : snapshot;
+      const frame = `id: ${s.revision}\nevent: snapshot\ndata: ${JSON.stringify(s)}\n\n`;
+      if (!res.write(frame)) { clients.delete(res); res.destroy(); }
+    }
   };
   loop.on('snapshot', broadcast);
   const run = () => replay(loop, { signal: abort.signal }).catch(() => {
@@ -44,7 +47,7 @@ export function createApp(loop: VoteLoop, options: { autoStart?: boolean; tick?:
         for await (const chunk of req) { body += chunk; if (Buffer.byteLength(body) > 2048) { json(413, { error: 'Request too large' }); return; } }
         let input;
         try { input = JSON.parse(body); } catch { json(400, { error: 'Invalid request' }); return; }
-        if (!input || !['close', 'approve', 'veto', 'demo-appeal', 'uphold', 'overturn'].includes(input.action) || typeof input.caseId !== 'string') { json(400, { error: 'Invalid control' }); return; }
+        if (!input || !['promote', 'dismiss', 'reveal', 'force-guilty', 'close', 'approve', 'veto', 'demo-appeal', 'uphold', 'overturn'].includes(input.action) || typeof input.caseId !== 'string') { json(400, { error: 'Invalid control' }); return; }
         try { loop.control(input.action as Control, input.caseId); json(200, { ok: true }); }
         catch (e) { json(409, { error: e instanceof Error ? e.message : 'Control rejected' }); }
         return;
@@ -52,10 +55,12 @@ export function createApp(loop: VoteLoop, options: { autoStart?: boolean; tick?:
       if (req.method !== 'GET') { res.writeHead(405); res.end(); return; }
       if (url.pathname === '/cases') { json(200, loop.snapshot()); return; }
       if (url.pathname === '/events') {
+        const operator = url.searchParams.get('operator') === '1';
+        if (operator && !req.headers.cookie?.split('; ').includes(`overrule_operator=${token}`)) { json(403, { error: 'Use the local operator page' }); return; }
         res.writeHead(200, { 'Content-Type': 'text/event-stream', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
-        res.write('retry: 1000\n\n'); clients.add(res);
+        res.write('retry: 1000\n\n'); clients.set(res, operator);
         // Always send a complete snapshot, including after Last-Event-ID reconnects.
-        const s = loop.snapshot();
+        const s = loop.snapshot(operator);
         res.write(`id: ${s.revision}\nevent: snapshot\ndata: ${JSON.stringify(s)}\n\n`);
         req.on('close', () => clients.delete(res));
         if (options.autoStart && !started) { started = true; void run(); }
@@ -70,7 +75,7 @@ export function createApp(loop: VoteLoop, options: { autoStart?: boolean; tick?:
       const file = files[url.pathname];
       if (!file) { res.writeHead(404); res.end('Not found'); return; }
       let content = await readFile(new URL(`../public/${file[0]}`, import.meta.url), 'utf8');
-      if (file[0] === 'operator.html') content = content.replace('__OPERATOR_TOKEN__', token);
+      if (file[0] === 'operator.html') { content = content.replace('__OPERATOR_TOKEN__', token); res.setHeader('Set-Cookie', `overrule_operator=${token}; HttpOnly; SameSite=Strict; Path=/`); }
       res.writeHead(200, { 'Content-Type': `${file[1]}; charset=utf-8` }); res.end(content);
     } catch { if (!res.headersSent) json(500, { error: 'Local server error' }); else res.end(); }
   });
@@ -79,7 +84,7 @@ export function createApp(loop: VoteLoop, options: { autoStart?: boolean; tick?:
   function stop() {
     abort.abort();
     if (timer) clearInterval(timer);
-    for (const res of clients) res.end();
+    for (const res of clients.keys()) res.end();
     clients.clear();
     return new Promise<void>((resolve, reject) => server.close(e => e ? reject(e) : resolve()));
   }

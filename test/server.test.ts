@@ -60,3 +60,23 @@ test('operator replay endpoint starts one fixture and rejects a concurrent start
     assert.equal((await fetch(`${base}/api/replay`, { method: 'POST', headers })).status, 409);
   } finally { await app.stop(); loop.dispose(); }
 });
+
+test('public HTTP and SSE redact evidence while authenticated operator SSE can review it', async () => {
+  const loop = new VoteLoop({ now: () => 1000 }); const app = createApp(loop, { tick: false });
+  const c = loop.engine.open('private', { id: 'm', userId: 'u', login: 'u', text: 'PRIVATE-EVIDENCE', at: 1000 }, 'PRIVATE-REASON', 1000);
+  await new Promise<void>(resolve => app.server.listen(0, '127.0.0.1', resolve));
+  const base = `http://127.0.0.1:${(app.server.address() as { port: number }).port}`; const abort = new AbortController();
+  try {
+    assert.doesNotMatch(await (await fetch(base + '/cases')).text(), /PRIVATE/);
+    const publicStream = await fetch(base + '/events', { signal: abort.signal });
+    assert.doesNotMatch(new TextDecoder().decode((await publicStream.body!.getReader().read()).value), /PRIVATE/);
+    assert.equal((await fetch(base + '/events?operator=1')).status, 403);
+    const page = await fetch(base + '/operator'); const cookie = page.headers.get('set-cookie')!.split(';')[0];
+    const html = await page.text(); const token = /name="operator-token" content="([a-f0-9]+)"/.exec(html)![1];
+    const privateStream = await fetch(base + '/events?operator=1', { signal: abort.signal, headers: { Cookie: cookie } });
+    assert.match(new TextDecoder().decode((await privateStream.body!.getReader().read()).value), /PRIVATE-EVIDENCE/);
+    const headers = { Origin: base, 'X-Overrule-Token': token, 'Content-Type': 'application/json' };
+    assert.equal((await fetch(base + '/api/control', { method: 'POST', headers, body: JSON.stringify({ action: 'reveal', caseId: c.id }) })).status, 200);
+    assert.match(await (await fetch(base + '/cases')).text(), /PRIVATE-EVIDENCE/);
+  } finally { abort.abort(); await app.stop(); loop.dispose(); }
+});

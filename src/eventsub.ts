@@ -56,7 +56,7 @@ export class LiveEventSub implements ChatSource {
     return new Promise<void>((resolve, reject) => {
       const fail = () => { if (this.stopped) return; this.stop(); o.onStatus?.('disconnected'); if (!settled) { settled = true; reject(new Error('EventSub authorization or transport failed')); } o.onFatal?.(); };
       const subscribe = async (sessionId: string) => {
-        for (const type of o.types ?? ['channel.chat.message']) {
+        for (const type of o.types ?? ['channel.chat.message', 'channel.chat.message_delete', 'channel.chat.clear_user_messages', 'channel.chat.clear']) {
           let token = await o.token();
           const request = () => fetch(endpoint, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(4000), headers: { Authorization: `Bearer ${token}`, 'Client-Id': o.clientId, 'Content-Type': 'application/json' }, body: JSON.stringify({ type, version: '1', condition: { broadcaster_user_id: o.broadcasterId, user_id: o.userId }, transport: { method: 'websocket', session_id: sessionId } }) });
           let response = await request();
