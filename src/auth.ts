@@ -56,6 +56,9 @@ export class FileTokenStore implements TokenStore {
     } catch { throw new Error('Cannot save the local token store'); }
   }
 }
+export class AuthorizationError extends Error {}
+export class TransientError extends Error {}
+export const retryDelay = (attempt: number) => Math.min(60000, 1000 * 2 ** Math.min(attempt, 6));
 export class TwitchOAuth implements OAuthProvider {
   private app: AppCredentials;
   private store: TokenStore;
@@ -68,6 +71,24 @@ export class TwitchOAuth implements OAuthProvider {
   private lastValidated = 0;
   private timer?: ReturnType<typeof setInterval>;
   private invalid = false;
+  private retries = new AbortController();
+  private async request(url: URL, init: RequestInit): Promise<Response> {
+    const signal = this.retries.signal;
+    for (let attempt = 0; ; attempt++) {
+      signal.throwIfAborted();
+      try {
+        const response = await fetch(url, { ...init, signal: AbortSignal.any([signal, AbortSignal.timeout(4000)]) });
+        if (response.status !== 429 && response.status < 500) {
+          // Read under the same deadline so a dropped response body also retries.
+          const body = await response.arrayBuffer();
+          return new Response([204, 205].includes(response.status) ? null : body, { status: response.status, headers: response.headers });
+        }
+        await response.body?.cancel();
+      } catch { signal.throwIfAborted(); }
+      const { setTimeout: pause } = await import('node:timers/promises');
+      await pause(retryDelay(attempt), undefined, { signal });
+    }
+  }
   constructor(app: AppCredentials, store: TokenStore, options: { baseUrl?: string; now?: () => number } = {}) {
     this.app = app; this.store = store; this.now = options.now ?? Date.now;
     this.base = options.baseUrl ?? 'https://id.twitch.tv/oauth2/';
@@ -78,14 +99,14 @@ export class TwitchOAuth implements OAuthProvider {
     if (!/^[a-f0-9]{64}$/.test(state)) throw new Error('Invalid OAuth state');
     this.state = { value: state, until: this.now() + 600000 };
     const url = new URL('authorize', this.base);
-    url.search = new URLSearchParams({ client_id: this.app.client_id, redirect_uri: this.app.redirect_uri, response_type: 'code', scope: REQUIRED_SCOPES.join(' '), state }).toString();
+    url.search = new URLSearchParams({ client_id: this.app.client_id, redirect_uri: this.app.redirect_uri, response_type: 'code', force_verify: 'true', scope: REQUIRED_SCOPES.join(' '), state }).toString();
     return url;
   }
   private async grant(params: Record<string, string>): Promise<void> {
     let response: Response;
-    try { response = await fetch(new URL('token', this.base), { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(4000), headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: this.app.client_id, client_secret: this.app.client_secret, ...params }) }); }
-    catch { throw new Error('OAuth service unavailable'); }
-    if (!response.ok) { this.invalid = true; throw new Error('OAuth authorization required'); }
+    try { response = await this.request(new URL('token', this.base), { method: 'POST', redirect: 'error', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ client_id: this.app.client_id, client_secret: this.app.client_secret, ...params }) }); }
+    catch { throw new TransientError('OAuth service unavailable'); }
+    if (!response.ok) { this.invalid = true; throw new AuthorizationError('OAuth authorization required'); }
     try {
       const body = await response.json() as any;
       if (!body.access_token || !body.refresh_token || !Number.isFinite(body.expires_in) || body.expires_in <= 0) throw new Error();
@@ -105,32 +126,32 @@ export class TwitchOAuth implements OAuthProvider {
     if (this.tokens.expiresAt <= this.now() + 60000) await this.refresh();
     await this.validate(); return true;
   }
-  identity(): Identity { if (!this.user || this.invalid) throw new Error('OAuth authorization required'); return structuredClone(this.user); }
+  identity(): Identity { if (!this.user || this.invalid) throw new AuthorizationError('OAuth authorization required'); return structuredClone(this.user); }
   private async refresh(): Promise<void> {
     if (!this.refreshing) {
       this.refreshing = (async () => {
-        if (!this.tokens?.refresh_token) throw new Error('OAuth authorization required');
+        if (!this.tokens?.refresh_token) throw new AuthorizationError('OAuth authorization required');
         await this.grant({ grant_type: 'refresh_token', refresh_token: this.tokens.refresh_token });
       })().finally(() => { this.refreshing = undefined; });
     }
     await this.refreshing;
   }
   async validate(retry = true): Promise<void> {
-    if (!this.tokens) throw new Error('OAuth authorization required');
+    if (!this.tokens) throw new AuthorizationError('OAuth authorization required');
     let response: Response;
-    try { response = await fetch(new URL('validate', this.base), { headers: { Authorization: `OAuth ${this.tokens.access_token}` }, redirect: 'error', signal: AbortSignal.timeout(4000) }); }
-    catch { this.invalid = true; throw new Error('OAuth validation unavailable'); }
+    try { response = await this.request(new URL('validate', this.base), { headers: { Authorization: `OAuth ${this.tokens.access_token}` }, redirect: 'error', signal: AbortSignal.timeout(4000) }); }
+    catch { throw new TransientError('OAuth validation unavailable'); }
     if (response.status === 401 && retry) { await this.refresh(); return this.validate(false); }
-    if (!response.ok) { this.invalid = true; throw new Error('OAuth authorization required'); }
+    if (!response.ok) { this.invalid = true; throw new AuthorizationError('OAuth authorization required'); }
     try {
       const b = await response.json() as any;
       if (b.client_id !== this.app.client_id || typeof b.user_id !== 'string' || !b.user_id || !Array.isArray(b.scopes) || !REQUIRED_SCOPES.every(s => b.scopes.includes(s)) || (this.user && this.user.userId !== b.user_id)) throw new Error();
       this.user = { userId: b.user_id, login: typeof b.login === 'string' ? b.login : b.user_id, scopes: b.scopes };
       this.invalid = false; this.lastValidated = this.now();
-    } catch { this.invalid = true; throw new Error('OAuth identity or scopes do not match'); }
+    } catch { this.invalid = true; throw new AuthorizationError('OAuth identity or scopes do not match'); }
   }
   async accessToken(): Promise<string> {
-    if (this.invalid || !this.tokens) throw new Error('OAuth authorization required');
+    if (this.invalid || !this.tokens) throw new AuthorizationError('OAuth authorization required');
     if (this.tokens.expiresAt <= this.now() + 60000) { await this.refresh(); await this.validate(); }
     if (!this.user || this.now() - this.lastValidated >= 3600000) await this.validate();
     return this.tokens!.access_token;
@@ -141,8 +162,9 @@ export class TwitchOAuth implements OAuthProvider {
   }
   startValidation(onFailure: () => void): void {
     this.stopValidation();
-    this.timer = setInterval(() => { void this.validate().catch(() => { this.stopValidation(); onFailure(); }); }, 3600000);
+    this.retries = new AbortController();
+    this.timer = setInterval(() => { void this.validate().catch(error => { if (error instanceof AuthorizationError) { this.stopValidation(); onFailure(); } }); }, 3600000);
     this.timer.unref();
   }
-  stopValidation(): void { if (this.timer) clearInterval(this.timer); }
+  stopValidation(): void { if (this.timer) clearInterval(this.timer); this.retries.abort(); }
 }

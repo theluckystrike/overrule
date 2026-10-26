@@ -77,10 +77,12 @@ A new fixture can start after the current case closes.
 ## Case rules
 
 - One active case in the court.
-- Broadcaster and moderator immunity. VIP immunity is on unless VIP_IMMUNITY=0 in live mode.
+- Broadcaster and moderator immunity, including lead moderators. Staff, admin and global moderator badges are also immune. VIP immunity is on unless VIP_IMMUNITY=0 in live mode.
 - Viewer reports enter a private operator queue. Only operator promotion opens the case.
 - Evidence stays hidden in public snapshots until the operator selects Reveal evidence on stream.
 - Message deletion and user chat clearing remove cached and displayed evidence.
+- An attempted ruling on deleted evidence becomes expired with no timeout.
+- Do not delete the target message during the timeout demonstration. See the [owner test script](docs/owner-test.md).
 - SUBSCRIBER_VOTES_ONLY=1 in live mode limits viewer votes to subscribers. Mods and the broadcaster remain eligible.
 - Automatic approval cannot use live Helix.
 - One vote per user. A changed vote replaces the earlier vote.
@@ -116,6 +118,8 @@ HTTP requests have a four-second deadline. Live requests retry once after a 401 
 A saved pending action becomes unknown after restart and is not sent again.
 An owner must check the channel before any manual recovery.
 There is no recovery button yet.
+Helix waits at most four seconds for authorization before recording Not sent. Authorization unavailable.
+A later token recovery cannot send that failed action.
 
 An overturn changes the final precedent and requests removal of the owned timeout.
 The HTTP client compares the current timeout with its saved receipt first.
@@ -178,18 +182,23 @@ The user-token scopes are `user:read:chat`, `user:write:chat` and `moderator:man
 The current live Helix factory requires matching broadcaster and moderator IDs for its timeout ownership check.
 Verdicts post as the broadcaster. A separate bot identity is not supported.
 
+Set OVERRULE_EXPECTED_LOGIN to the test channel login before each live run. A saved or new identity that differs stops startup.
+OAuth forces account confirmation. The terminal prints Connected to channel followed by the validated login.
 Run npm run live. If authorization is needed, open http://localhost:3000 and follow the Twitch link.
 OAuth checks state and the browser cookie. Tokens stay in ~/.config/overrule/tokens.json with mode 600.
 Tokens refresh before expiry and after a 401. Validation runs at startup and hourly.
 EventSub subscribes to chat messages, message deletion, user chat clearing and full chat clearing.
 It handles keepalives, reconnect transfer, connection loss, duplicate notifications and revocation.
+OAuth retries network errors, timeouts, 429 and server errors with delays of 1, 2, 4 and 8 seconds, capped at 60 seconds.
+Subscription failures reconnect with backoff and jitter. Successful connection resets the delay.
+Authorization rejection still stops the live session. Temporary outages keep the local court available.
 Fixtures cannot start in live mode.
 First verify real chat with dry run actions. Then use the explicit action flags for an owner-approved test-account timeout and appeal removal.
 
 ## Tests and build evidence
 
-The latest verification passed **65 tests** and the TypeScript check on 26 October 2026.
-Local Twitch CLI-style HTTP and WebSocket mocks cover OAuth refresh, hourly validation, reconnects, revocation and live Helix wiring.
+The latest verification passed **79 tests** and the TypeScript check on 26 October 2026.
+Local HTTP and WebSocket mocks cover OAuth refresh, hourly validation, reconnects, revocation and live Helix wiring.
 These are repository mock servers. The Twitch CLI binary and real Twitch APIs were not run.
 Safety tests cover role immunity, report triage, subscriber votes, evidence removal, private HTTP access, no-quorum decisions and the live automatic-action guard.
 

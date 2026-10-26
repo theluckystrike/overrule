@@ -43,7 +43,10 @@ export function authorizationServer(auth: TwitchOAuth) {
 export function liveRuntime(auth: TwitchOAuth, credentials: AppCredentials, options: {
   journal?: Journal; allowActions?: boolean; websocketUrl?: string; subscriptionUrl?: string; helixBaseUrl?: string;
 } = {}) {
-  const id = auth.identity().userId;
+  const identity = auth.identity();
+  const expected = process.env.OVERRULE_EXPECTED_LOGIN?.trim().toLowerCase();
+  if (expected && identity.login.toLowerCase() !== expected) throw new Error('OAuth identity does not match expected channel');
+  const id = identity.userId;
   const helix = options.allowActions ? new HttpHelix({ clientId: credentials.client_id, token: () => auth.accessToken(), refreshAfter401: token => auth.refreshAfter401(token), broadcasterId: id, moderatorId: id, liveEnabled: true, baseUrl: options.helixBaseUrl }) : new DryRunHelix();
   const loop = new VoteLoop({ liveSource: true, vipImmune: process.env.VIP_IMMUNITY !== '0', subscribersOnly: process.env.SUBSCRIBER_VOTES_ONLY === '1', channelId: id, streamId: `live-${id}-${new Date().toISOString().slice(0, 10)}`, journal: options.journal ?? new Journal('data/live-audit.jsonl'), helix, brain: configuredBrain() });
   const app = createApp(loop, { live: true });
@@ -55,6 +58,7 @@ export function liveRuntime(auth: TwitchOAuth, credentials: AppCredentials, opti
     await new Promise<void>((resolve, reject) => { app.server.once('error', reject); app.server.listen(port, '127.0.0.1', resolve); });
     auth.startValidation(() => { console.error('OAuth validation failed. Live session stopped.'); void stop(); });
     await source.start(raw => { try { loop.accept(raw); } catch { console.log('Chat event ignored by court rules'); } });
+    console.log(`Connected to channel ${identity.login}`);
   } };
 }
 export async function startLive(): Promise<void> {

@@ -34,16 +34,25 @@ export class HttpHelix implements HelixClient {
     if (live && !options.liveEnabled) throw new Error('OWNER-NEEDED. Live Helix gate is closed');
     this.mode = live ? 'live' : 'fake';
   }
+  private async authorize(work: () => Promise<string>): Promise<string> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([work(), new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Authorization deadline')), this.options.timeoutMs ?? 4000);
+      })]);
+    } catch { throw new HelixFailure('Not sent. Authorization unavailable'); }
+    finally { if (timer) clearTimeout(timer); }
+  }
   private async request(method: string, path: string, query: Record<string, string>, body?: unknown): Promise<any> {
     const url = new URL(path, this.base); url.search = new URLSearchParams(query).toString();
+    let token = await this.authorize(() => this.options.token());
     try {
-      let token = await this.options.token();
       const request = () => fetch(url, { method, redirect: 'error', signal: AbortSignal.timeout(this.options.timeoutMs ?? 4000),
         headers: { 'Client-Id': this.options.clientId, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: body === undefined ? undefined : JSON.stringify(body) });
       let response = await request();
       if (response.status === 401 && this.options.refreshAfter401) {
-        await this.options.refreshAfter401(token); token = await this.options.token(); response = await request();
+        token = await this.authorize(async () => { await this.options.refreshAfter401!(token); return this.options.token(); }); response = await request();
       }
       if (!response.ok) throw new HelixFailure(`Helix request rejected with HTTP ${response.status}`, response.status >= 500);
       if (response.status === 204) return null;

@@ -110,3 +110,27 @@ The optional paid model path has only fake-response tests so far.
 Disk checks showed 20 to 21 GB available. Free memory stayed at or above 61 percent.
 No install was needed. Only the approved CDP browser was used.
 The checks closed their own tabs and local servers.
+
+## Live integration and first review fixes
+
+26 October 2026. Same Codex thread.
+The owner requested the first review's top three fix groups.
+Commit e03547c added OAuth, token refresh, hourly validation, EventSub and the gated live Helix runtime. All 52 tests passed.
+Commit a470b20 added moderator proxy appeals, explicit case expiry and reply prefix parsing. All 56 tests passed.
+Commit 5d13588 added immunity, private report triage, evidence hiding and deletion handling, subscriber vote gating and explicit no-quorum decisions. All 65 tests passed.
+Each group passed the TypeScript check. Local HTTP and WebSocket mocks supplied the Twitch responses.
+No real Twitch channel or credentials were used. Gitleaks passed before the push.
+
+## Second review fixes
+
+26 October 2026. Same Codex thread.
+The owner requested N1, N2, N3 and N5 with regression tests, plus small and safe medium fixes.
+Six initial regressions failed against the prior code. They cover lead moderator permissions and immunity, staff immunity, account selection, owner deletion instructions, validation recovery and subscription recovery.
+Added lead moderator badge support and immune staff roles.
+Added forced OAuth confirmation, an expected-login guard and the connected channel log.
+Kept expiry for deleted evidence. Added an owner test script that warns against deleting the timeout target.
+Added transient OAuth retries and EventSub reconnect backoff. Authorization rejection still fails closed.
+Also fixed the socket-close race, portable token-test teardown and the distinction between an unsent Helix action and an uncertain result.
+The socket-close and unsent-action tests failed before their fixes.
+All 79 tests and the TypeScript check passed after the fixes.
+No browser, OBS, paid model or real Twitch run was performed.

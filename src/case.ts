@@ -7,7 +7,7 @@ export type EffectName = 'timeout' | 'verdict' | 'release' | 'appealVerdict';
 export type State = 'open' | 'evidence' | 'voting' | 'awaiting_approval' | 'ruling' | 'appeal_window' | 'closed' | 'expired';
 export const terminal = (state: State) => state === 'closed' || state === 'expired';
 export type Verdict = 'guilty' | 'notguilty';
-export type Role = 'viewer' | 'moderator' | 'broadcaster' | 'vip';
+export type Role = 'viewer' | 'moderator' | 'broadcaster' | 'vip' | 'twitch-staff';
 export interface Evidence { id: string; userId: string; login: string; text: string; at: number; role?: Role; deleted?: boolean }
 export interface CaseFile {
   id: string; streamId: string; state: State; message: Evidence; reason: string;
@@ -66,7 +66,7 @@ export class CaseEngine {
     if (!message.id || !message.userId || !message.login || !message.text || !Number.isFinite(message.at)) throw new Error('Invalid evidence');
     if (at - message.at > 120000 || message.at > at + 5000) throw new Error('Message too old or in future');
     if (message.deleted) throw new Error('Evidence removed');
-    if (message.role === 'broadcaster' || message.role === 'moderator' || (message.role === 'vip' && this.options.vipImmune !== false)) throw new Error('Target is immune');
+    if (message.role === 'twitch-staff' || message.role === 'broadcaster' || message.role === 'moderator' || (message.role === 'vip' && this.options.vipImmune !== false)) throw new Error('Target is immune');
     if (this.list().some(c => !terminal(c.state))) throw new Error('There is an active case');
     if (!reason.trim() || reason.length > 500) throw new Error('Reason required with at most 500 characters');
     const c: CaseFile = {

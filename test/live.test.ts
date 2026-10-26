@@ -106,9 +106,9 @@ test('hourly validator stops the session when authorization is revoked', async t
     await until(() => stopped); await assert.rejects(auth.accessToken(), /authorization/);
   } finally { auth.stopValidation(); await mock.close(); }
 });
-test('token files are private and are reusable without exposing their values', async () => {
+test('token files are private and are reusable without exposing their values', async t => {
   const { FileTokenStore } = await import('../src/auth.ts');
-  const { stat, unlink, appendFile } = await import('node:fs/promises');
+  const { stat, unlink } = await import('node:fs/promises');
   const { randomUUID } = await import('node:crypto');
   const path = `${process.cwd()}/data-test-${randomUUID()}.jsonl`;
   try {
@@ -119,7 +119,7 @@ test('token files are private and are reusable without exposing their values', a
     assert.equal((await store.load())!.expiresAt, 10000);
   } finally {
     const info = await stat(path).catch(() => null);
-    if (info) { await appendFile('/Users/mike/sprint-1026-work/DELETIONS-MANIFEST.txt', `${info.size} bytes ${path}\n`); await unlink(path); }
+    if (info) { await unlink(path); t.diagnostic(`Deleted test file ${JSON.stringify({ size: info.size, path })}`); }
   }
 });
 test('missed keepalive replaces the connection and creates fresh subscriptions', async () => {

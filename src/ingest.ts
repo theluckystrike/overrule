@@ -15,7 +15,7 @@ export function normalize(raw: unknown): ChatEvent | null {
   const at = Date.parse(m.message_timestamp);
   if (!Number.isFinite(at)) return null;
   const badges = Array.isArray(e.badges) ? e.badges : [];
-  const role: Role = e.chatter_user_id === e.broadcaster_user_id ? 'broadcaster' : badges.some((b: any) => b?.set_id === 'moderator') ? 'moderator' : badges.some((b: any) => b?.set_id === 'vip') ? 'vip' : 'viewer';
+  const role: Role = e.chatter_user_id === e.broadcaster_user_id ? 'broadcaster' : badges.some((b: any) => ['moderator', 'lead_moderator'].includes(b?.set_id)) ? 'moderator' : badges.some((b: any) => ['staff', 'admin', 'global_mod'].includes(b?.set_id)) ? 'twitch-staff' : badges.some((b: any) => b?.set_id === 'vip') ? 'vip' : 'viewer';
   return {
     eventId: m.message_id, messageId: e.message_id, channelId: e.broadcaster_user_id,
     userId: e.chatter_user_id, login: e.chatter_user_login.toLowerCase(), text: e.message.text,
