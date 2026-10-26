@@ -1,0 +1,14 @@
+{
+  "name": "overrule",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.18.0" },
+  "scripts": {
+    "dev": "node src/server.ts",
+    "sim": "node src/sim.ts",
+    "test": "node --test test/*.test.ts",
+    "check": "tsc --noEmit"
+  },
+  "devDependencies": { "@types/node": "^22.0.0", "typescript": "~5.8.3" }
+}

@@ -1,0 +1,10 @@
+node_modules/
+data/
+.env
+.env.*
+*.secret*
+.DS_Store
+coverage/
+data-test-*/
+data-test-*.jsonl
+DELETIONS-MANIFEST.txt
