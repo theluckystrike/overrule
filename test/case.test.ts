@@ -61,12 +61,13 @@ test('stale messages, veto, one appeal per stream and closure', () => {
   assert.equal(e.get(id).message.text, '');
   assert.equal(e.get(id).reason, '');
 });
-test('state reads cannot mutate the engine and stale approval cannot time out', () => {
+test('state reads cannot mutate the engine and expiry is explicit', () => {
   const e = setup(); const id = voting(e);
   e.get(id).state = 'closed';
   assert.equal(e.get(id).state, 'voting');
-  e.tick(130000);
-  assert.throws(() => e.decide('old', id, 'guilty', true, 130000), /old/);
+  e.tick(301000);
+  assert.equal(e.get(id).state, 'expired');
+  assert.equal(e.get(id).verdict, null);
 });
 test('tie yields no jury result and early close rejects subsequent votes', () => {
   const e = setup(); const id = voting(e);

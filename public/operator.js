@@ -7,13 +7,14 @@ function render() {
   $('phase').textContent = c ? c.state.replaceAll('_', ' ').toUpperCase() : 'NO ACTIVE CASE';
   $('case-title').textContent = c ? `@${c.message.login} · ${c.reason || 'Case closed'}` : 'Waiting for a report';
   $('summary').textContent = c ? `${Object.keys(c.votes).length} jurors · Jury result ${c.jury ?? 'pending'} · ${c.verdict ? `Final result ${c.verdict}` : 'No ruling yet'}` : 'The fixture uses three synthetic jurors.';
+  $('action-deadline').textContent = c && ['voting', 'awaiting_approval'].includes(c.state) ? `Action expires in ${Math.max(0, Math.ceil(((c.actionDeadline ?? c.openedAt + 300000) - s.now) / 1000))} seconds` : c?.state === 'expired' ? 'Ruling expired. No action.' : '';
   $('mode').textContent = s?.autoApprove ? 'Demo mode · A synthetic approval follows the vote deadline.' : 'Manual mode · A streamer key press is required.';
   $('pending').textContent = s?.pending ? s.pending.veto ? 'Veto queued · No action' : 'Approval queued · V can still veto' : '';
   $('close').disabled = !connected || c?.state !== 'voting';
   $('approve').disabled = $('veto').disabled = !connected || c?.state !== 'awaiting_approval';
-  $('replay').disabled = !connected || s?.replaying || !!s?.cases.some(c => c.state !== 'closed');
+  $('replay').disabled = !connected || s?.replaying || !!s?.cases.some(c => !['closed', 'expired'].includes(c.state));
   $('appeal-controls').hidden = c?.state !== 'appeal_window';
-  $('appeal-status').textContent = c?.appealed ? 'The accused requested an appeal. Review the ruling.' : 'The accused has two minutes to appeal. This button simulates their chat command.';
+  $('appeal-status').textContent = c?.appealed ? 'The accused requested an appeal. Review the ruling.' : 'A mod can file !appeal @login within two minutes. This button simulates a request.';
   $('demo-appeal').disabled = !connected || c?.state !== 'appeal_window' || c?.appealed || s?.actionMode === 'live';
   $('uphold').disabled = $('overturn').disabled = !connected || c?.state !== 'appeal_window' || !c?.appealed;
   $('voters').replaceChildren(...Object.values(c?.votes ?? {}).map(v => {

@@ -2,7 +2,7 @@ const $ = id => document.getElementById(id);
 let snapshot;
 let offset = 0;
 let lastGavel = sessionStorage.getItem('overrule-gavel');
-const names = { open: 'Case opened', evidence: 'Evidence review', voting: 'Voting open', awaiting_approval: 'Streamer decision', ruling: 'Ruling delivered', appeal_window: 'Appeal window', closed: 'Case closed' };
+const names = { open: 'Case opened', evidence: 'Evidence review', voting: 'Voting open', awaiting_approval: 'Streamer decision', ruling: 'Ruling delivered', appeal_window: 'Appeal window', closed: 'Case closed', expired: 'Ruling expired' };
 function render(s) {
   snapshot = s;
   offset = s.now - Date.now();
@@ -22,7 +22,7 @@ function render(s) {
   $('innocent-bar').style.width = `${100 * innocent / (guilty + innocent || 1)}%`;
   $('quorum').textContent = `${votes.length} jurors · ${votes.length < 3 ? 'Three needed for a jury result' : 'Quorum reached'}`;
   const jury = c.jury === 'guilty' ? 'Guilty' : c.jury === 'notguilty' ? 'Not guilty' : 'No jury result';
-  $('status').textContent = c.state === 'voting' ? 'One person. One vote. You can change your mind.' : c.state === 'awaiting_approval' ? `${jury} · Waiting for ${s.autoApprove ? 'simulated ' : ''}streamer approval` : c.state === 'appeal_window' ? 'The accused can type !appeal. The streamer has the final word.' : 'A ruling is a precedent. An appeal can change it.';
+  $('status').textContent = c.state === 'voting' ? 'One person. One vote. You can change your mind.' : c.state === 'awaiting_approval' ? `${jury} · Waiting for ${s.autoApprove ? 'simulated ' : ''}streamer approval` : c.state === 'appeal_window' ? 'A mod can file !appeal @login for the accused.' : c.state === 'expired' ? 'Ruling expired. No action.' : 'A ruling is a precedent. An appeal can change it.';
   $('contested').hidden = !c.contested;
   $('verdict').hidden = !c.verdict;
   $('verdict-text').textContent = c.verdict === 'guilty' ? 'Guilty' : 'No action';

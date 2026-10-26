@@ -21,7 +21,7 @@ function validExtras(c: CaseFile): boolean {
 }
 function validRecord(r: RecordEntry): boolean {
   const c = r.case;
-  const states = ['open', 'evidence', 'voting', 'awaiting_approval', 'ruling', 'appeal_window', 'closed'];
+  const states = ['open', 'evidence', 'voting', 'awaiting_approval', 'ruling', 'appeal_window', 'closed', 'expired'];
   return r.version === 1 && typeof r.op === 'string' && r.op.length > 0 && typeof r.action === 'string'
     && Number.isFinite(r.at) && !!c && typeof c.id === 'string' && typeof c.streamId === 'string'
     && states.includes(c.state) && Number.isFinite(c.openedAt) && Number.isFinite(c.updatedAt)

@@ -3,7 +3,7 @@ import { CaseEngine } from './case.ts';
 
 export interface ChatEvent {
   eventId: string; messageId: string; channelId: string; userId: string;
-  login: string; text: string; at: number; role: Role; replyTo?: string;
+  login: string; text: string; at: number; role: Role; replyTo?: string; replyLogin?: string;
 }
 export function normalize(raw: unknown): ChatEvent | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -20,6 +20,7 @@ export function normalize(raw: unknown): ChatEvent | null {
     eventId: m.message_id, messageId: e.message_id, channelId: e.broadcaster_user_id,
     userId: e.chatter_user_id, login: e.chatter_user_login.toLowerCase(), text: e.message.text,
     at, role, replyTo: typeof e.reply?.parent_message_id === 'string' ? e.reply.parent_message_id : undefined,
+    replyLogin: typeof e.reply?.parent_user_login === 'string' ? e.reply.parent_user_login.toLowerCase() : undefined,
   };
 }
 export class Ingest {
@@ -37,7 +38,11 @@ export class Ingest {
     for (const [id, times] of this.limits) if (!times.some(t => now - t < 10000)) this.limits.delete(id);
     if (this.seen.has(c.eventId)) return { ok: true, detail: 'Duplicate event ignored' };
     this.engine.tick(now);
-    const text = c.text.trim();
+    let text = c.text.trim();
+    if (c.replyTo && c.replyLogin) {
+      const first = text.split(/\s+/, 1)[0];
+      if (first.toLowerCase() === `@${c.replyLogin}`) text = text.slice(first.length).trimStart();
+    }
     if (!text.startsWith('!')) {
       this.messages.set(c.messageId, { id: c.messageId, userId: c.userId, login: c.login, text: c.text, at: c.at });
       this.seen.set(c.eventId, now);
@@ -82,9 +87,12 @@ export class Ingest {
         if (!id) throw new Error('Give a case id when more than one case is voting');
         this.engine.vote(op, id, c.userId, c.login, c.role, choice, now);
       } else if (command === '!appeal') {
-        id = this.engine.list().find(k => k.message.userId === c.userId && k.state === 'appeal_window')?.id;
+        const target = args[0]?.replace(/^@/, '').toLowerCase();
+        if (target && c.role === 'viewer') throw new Error('Only a mod or broadcaster can file another user appeal');
+        const appealCase = this.engine.list().find(k => (target ? k.message.login === target : k.message.userId === c.userId) && k.state === 'appeal_window');
+        id = appealCase?.id;
         if (!id) throw new Error('No case available for appeal');
-        this.engine.appeal(op, id, c.userId, now);
+        this.engine.appeal(op, id, appealCase!.message.userId, now, c.userId);
       } else if (command !== '!docket') {
         return { ok: false, detail: 'Unknown command' };
       }

@@ -1,3 +1,4 @@
+import { terminal } from './case.ts';
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { CaseEngine } from './case.ts';
@@ -30,7 +31,7 @@ export class VoteLoop extends EventEmitter {
   }
   snapshot() {
     const cases = this.engine.list();
-    const current = cases.find(c => c.state !== 'closed') ?? cases.at(-1) ?? null;
+    const current = cases.find(c => !terminal(c.state)) ?? cases.at(-1) ?? null;
     return { revision: this.revision, now: this.now(), cases, current, gavel: current?.state === 'ruling',
       pending: this.pending ? { veto: this.pending.veto } : null,
       autoApprove: this.autoApprove, actionMode: this.effects.client.mode, replaying: this.replaying, consistency: consistency(cases) };
@@ -81,13 +82,12 @@ export class VoteLoop extends EventEmitter {
     if (this.pending && now >= this.pending.at) {
       const p = this.pending; const current = this.engine.get(p.id);
       const verdict = p.veto ? 'notguilty' : current.jury ?? 'guilty';
-      // A delayed demo must not make an old-message timeout intent.
-      this.engine.decide(`operator-${p.id}`, p.id, now - current.message.at > 120000 ? 'notguilty' : verdict, true, now);
+      if (current.state === 'awaiting_approval') this.engine.decide(`operator-${p.id}`, p.id, verdict, true, now);
       this.pending = undefined;
     }
     for (const item of this.engine.list()) {
       if (item.state === 'ruling' && now >= item.updatedAt + 2500) this.engine.advance(`window-${item.id}`, item.id, 'appeal_window', now);
-      if (item.verdict) this.effects.run(item.id);
+      if (item.verdict || item.state === 'expired') this.effects.run(item.id);
     }
     this.publish();
   }

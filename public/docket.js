@@ -5,7 +5,7 @@ function render(s) {
   $('mode').textContent = `Action mode ${s.actionMode}. ${s.cases.length} cases on record.`;
   $('cases').replaceChildren(...s.cases.slice().reverse().map(c => {
     const card = element('article', '', 'operator-case');
-    card.append(element('span', `CASE ${c.id.slice(0, 8)} · ${c.state.replaceAll('_', ' ')}`, 'eyebrow'), element('h2', `@${c.message.login} · ${c.verdict === 'guilty' ? 'Guilty' : c.verdict ? 'No action' : 'Awaiting ruling'}`), element('p', c.message.text || 'Message hidden after the appeal window'));
+    card.append(element('span', `CASE ${c.id.slice(0, 8)} · ${c.state.replaceAll('_', ' ')}`, 'eyebrow'), element('h2', `@${c.message.login} · ${c.state === 'expired' ? 'Ruling expired. No action' : c.verdict === 'guilty' ? 'Guilty' : c.verdict ? 'No action' : 'Awaiting ruling'}`), element('p', c.message.text || 'Message hidden after the appeal window'));
     card.append(element('p', `Rule ${c.rule}. ${c.analysis?.charge ?? c.reason}. Advice from ${c.analysis?.source ?? 'rule checks'}.`));
     card.append(element('p', c.analysis?.precedentId ? `Cited precedent ${c.analysis.precedentId}` : 'No earlier precedent cited'));
     if (c.appealed) card.append(element('p', c.state !== 'closed' ? 'Appeal awaiting streamer review' : c.overturned ? 'Appeal overturned the ruling' : 'Appeal upheld the ruling'));

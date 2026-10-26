@@ -31,18 +31,19 @@ export class Effects {
   }
   private async perform(id: string) {
     let c = this.engine.get(id);
+    if (c.state === 'expired') { await this.once(id, 'verdict', () => this.client.verdict(id, `Overrule case ${id}. Ruling expired. No action.`)); return; }
     if (!c.verdict) return;
     if (c.state !== 'ruling' && !c.effects) return;
     if (c.verdict === 'guilty' && !c.overturned && c.state === 'ruling') {
       await this.once(id, 'timeout', () => {
-        if (this.now() - c.message.at > 120000) throw new HelixFailure('Message too old for timeout');
+        if (this.now() >= (c.actionDeadline ?? c.openedAt + 300000)) throw new HelixFailure('Case action deadline passed');
         return this.client.timeout(c.id, c.message.userId, c.timeoutSeconds);
       });
     }
     c = this.engine.get(id);
     if (!c.effects?.verdict) {
       const outcome = c.verdict === 'notguilty' ? 'No action' : c.effects?.timeout?.status === 'sent' ? this.client.mode === 'dry-run' ? 'Dry run timeout recorded' : 'Timeout confirmed' : 'Timeout unconfirmed. Moderator review required';
-      await this.once(id, 'verdict', () => this.client.verdict(id, `Overrule case ${id}. ${outcome}. ${Object.keys(c.votes).length} jurors. One appeal is available.`));
+      await this.once(id, 'verdict', () => this.client.verdict(id, `Overrule case ${id}. ${outcome}. ${Object.keys(c.votes).length} jurors. A mod can file !appeal @${c.message.login} during the two-minute appeal window.`));
     }
     c = this.engine.get(id);
     if (c.state === 'closed' && c.appealed) {

@@ -4,7 +4,8 @@ import type { Analysis } from './brain.ts';
 export interface Effect { status: 'pending' | 'sent' | 'failed' | 'unknown'; mode: 'dry-run' | 'fake' | 'live'; detail?: string; receipt?: { createdAt: string; endsAt: string; reason: string } }
 export type EffectName = 'timeout' | 'verdict' | 'release' | 'appealVerdict';
 
-export type State = 'open' | 'evidence' | 'voting' | 'awaiting_approval' | 'ruling' | 'appeal_window' | 'closed';
+export type State = 'open' | 'evidence' | 'voting' | 'awaiting_approval' | 'ruling' | 'appeal_window' | 'closed' | 'expired';
+export const terminal = (state: State) => state === 'closed' || state === 'expired';
 export type Verdict = 'guilty' | 'notguilty';
 export type Role = 'viewer' | 'moderator' | 'broadcaster';
 export interface Evidence { id: string; userId: string; login: string; text: string; at: number }
@@ -15,6 +16,8 @@ export interface CaseFile {
   arrivals: number[]; contested: boolean; jury: Verdict | null; verdict: Verdict | null;
   timeoutSeconds: number; appealed: boolean; overturned: boolean;
   analysis?: Analysis;
+  actionDeadline?: number;
+  appealFiledBy?: string;
   effects?: Partial<Record<EffectName, Effect>>;
 }
 const edges: Partial<Record<State, State>> = {
@@ -60,13 +63,14 @@ export class CaseEngine {
     const prior = this.duplicate(op); if (prior) return prior;
     if (!message.id || !message.userId || !message.login || !message.text || !Number.isFinite(message.at)) throw new Error('Invalid evidence');
     if (at - message.at > 120000 || message.at > at + 5000) throw new Error('Message too old or in future');
-    if (this.list().some(c => c.message.userId === message.userId && c.state !== 'closed')) throw new Error('User has an active case');
+    if (this.list().some(c => c.message.userId === message.userId && !terminal(c.state))) throw new Error('User has an active case');
     if (!reason.trim() || reason.length > 500) throw new Error('Reason required with at most 500 characters');
     const c: CaseFile = {
       id: randomUUID(), streamId: this.streamId, state: 'open', message: structuredClone(message),
       reason, rule: /spam/i.test(reason) ? 'spam' : /harass|insult|kind/i.test(reason) ? 'harassment' : /link/i.test(reason) ? 'links' : 'channel-conduct', openedAt: at, updatedAt: at,
       votes: {}, arrivals: [], contested: false, jury: null, verdict: null,
       timeoutSeconds: 0, appealed: false, overturned: false,
+      actionDeadline: at + 300000,
     };
     return this.write(op, c, 'open', at);
   }
@@ -107,16 +111,16 @@ export class CaseEngine {
     if (!streamerApproved) throw new Error('Explicit streamer decision required');
     if (c.state !== 'awaiting_approval') throw new Error('Invalid state transition');
     if (verdict !== 'guilty' && verdict !== 'notguilty') throw new Error('Invalid verdict');
-    if (verdict === 'guilty' && at - c.message.at > 120000) throw new Error('Message too old for action');
+    if (at >= (c.actionDeadline ?? c.openedAt + 300000)) return this.expire(id, at);
     c.verdict = verdict; c.timeoutSeconds = verdict === 'guilty' ? 600 : 0; c.state = 'ruling';
     return this.write(op, c, 'streamer_decision', at);
   }
-  appeal(op: string, id: string, userId: string, at: number): CaseFile {
+  appeal(op: string, id: string, userId: string, at: number, filedBy = userId): CaseFile {
     const prior = this.duplicate(op); if (prior) return prior;
     const c = this.get(id);
     if (c.state !== 'appeal_window' || at >= c.appealDeadline! || userId !== c.message.userId) throw new Error('Appeal not available');
     if (this.list().some(other => other.streamId === c.streamId && other.message.userId === userId && other.appealed)) throw new Error('Only one appeal per stream');
-    c.appealed = true;
+    c.appealed = true; c.appealFiledBy = filedBy;
     return this.write(op, c, 'appeal_requested', at);
   }
   resolveAppeal(op: string, id: string, overturn: boolean, streamerApproved: boolean, at: number): CaseFile {
@@ -130,8 +134,16 @@ export class CaseEngine {
   }
   tick(at: number): void {
     for (const c of this.list()) {
+      if (['open', 'evidence', 'voting', 'awaiting_approval'].includes(c.state) && at >= (c.actionDeadline ?? c.openedAt + 300000)) { this.expire(c.id, at); continue; }
       if (c.state === 'voting' && at >= c.deadline!) this.advance(`timer-vote-${c.id}`, c.id, 'awaiting_approval', at);
       if (c.state === 'appeal_window' && !c.appealed && at >= c.appealDeadline!) this.advance(`timer-close-${c.id}`, c.id, 'closed', at);
     }
+  }
+  expire(id: string, at: number): CaseFile {
+    const c = this.get(id);
+    if (terminal(c.state)) return c;
+    if (!['open', 'evidence', 'voting', 'awaiting_approval'].includes(c.state)) throw new Error('Only undecided cases can expire');
+    c.state = 'expired'; c.verdict = null; c.timeoutSeconds = 0; c.message.text = ''; c.reason = '';
+    return this.write(`expiry-${id}`, c, 'expired', at);
   }
 }

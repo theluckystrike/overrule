@@ -1,3 +1,4 @@
+import { terminal } from './case.ts';
 import { createServer, type ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
@@ -35,7 +36,7 @@ export function createApp(loop: VoteLoop, options: { autoStart?: boolean; tick?:
         if (req.headers.origin !== `http://${req.headers.host}` || req.headers['x-overrule-token'] !== token) { json(403, { error: 'Use the local operator page' }); return; }
         if (url.pathname === '/api/replay') {
           if (options.live) { json(403, { error: 'Fixtures are disabled on the live channel' }); return; }
-          if (loop.replaying || loop.engine.list().some(c => c.state !== 'closed')) { json(409, { error: 'Wait for the current case to close' }); return; }
+          if (loop.replaying || loop.engine.list().some(c => !terminal(c.state))) { json(409, { error: 'Wait for the current case to close' }); return; }
           void run(); json(202, { ok: true }); return;
         }
         if (url.pathname !== '/api/control') { json(404, { error: 'Unknown route' }); return; }

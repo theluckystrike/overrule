@@ -1,3 +1,4 @@
+import { terminal } from './case.ts';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { FakeEventSub } from './eventsub.ts';
@@ -7,7 +8,7 @@ import type { VoteLoop } from './loop.ts';
 export async function replay(loop: VoteLoop, options: {
   now?: () => number; sleep?: (ms: number) => Promise<void>; runId?: string; signal?: AbortSignal;
 } = {}): Promise<void> {
-  if (loop.replaying || loop.engine.list().some(c => c.state !== 'closed')) throw new Error('An active case must close before replay');
+  if (loop.replaying || loop.engine.list().some(c => !terminal(c.state))) throw new Error('An active case must close before replay');
   loop.replaying = true; loop.publish();
   const now = options.now ?? loop.now;
   const sleep = options.sleep ?? ((ms: number) => delay(ms, undefined, { signal: options.signal }));
