@@ -7,7 +7,7 @@ import { Journal } from './precedent.ts';
 import { replay } from './replay.ts';
 import { configuredBrain } from './brain.ts';
 
-export function createApp(loop: VoteLoop, options: { autoStart?: boolean; tick?: boolean } = {}) {
+export function createApp(loop: VoteLoop, options: { autoStart?: boolean; tick?: boolean; live?: boolean } = {}) {
   const token = randomBytes(32).toString('hex');
   const clients = new Set<ServerResponse>();
   const abort = new AbortController();
@@ -34,6 +34,7 @@ export function createApp(loop: VoteLoop, options: { autoStart?: boolean; tick?:
       if (req.method === 'POST') {
         if (req.headers.origin !== `http://${req.headers.host}` || req.headers['x-overrule-token'] !== token) { json(403, { error: 'Use the local operator page' }); return; }
         if (url.pathname === '/api/replay') {
+          if (options.live) { json(403, { error: 'Fixtures are disabled on the live channel' }); return; }
           if (loop.replaying || loop.engine.list().some(c => c.state !== 'closed')) { json(409, { error: 'Wait for the current case to close' }); return; }
           void run(); json(202, { ok: true }); return;
         }

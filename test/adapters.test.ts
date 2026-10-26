@@ -14,7 +14,7 @@ test('fixture source can be stopped without delivering more events', async () =>
   assert.equal(count, 1);
 });
 test('live adapters fail closed without credentials or network access', async () => {
-  await assert.rejects(new LiveEventSub().start(() => {}), /not implemented/);
+  await assert.rejects(new LiveEventSub().start(() => {}), /configuration/);
   const auth = new DisabledOAuth();
   await assert.rejects(auth.authorizationUrl('state'), /not implemented/);
   await assert.rejects(auth.exchange('code', 'state'), /not implemented/);

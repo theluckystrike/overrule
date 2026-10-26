@@ -21,7 +21,7 @@ export class DryRunHelix implements HelixClient {
   async release(caseId: string, _userId: string, _receipt: TimeoutReceipt): Promise<void> { this.calls.push(`release/${caseId}`); }
 }
 function checkDuration(seconds: number) { if (!Number.isInteger(seconds) || seconds < 1 || seconds > 600) throw new HelixFailure('Timeout must be between 1 and 600 seconds'); }
-interface Options { baseUrl?: string; clientId: string; token: () => Promise<string>; broadcasterId: string; moderatorId: string; liveEnabled?: boolean; timeoutMs?: number }
+interface Options { baseUrl?: string; clientId: string; token: () => Promise<string>; refreshAfter401?: (token: string) => Promise<void>; broadcasterId: string; moderatorId: string; liveEnabled?: boolean; timeoutMs?: number }
 export class HttpHelix implements HelixClient {
   readonly mode: 'fake' | 'live';
   private options: Options;
@@ -37,9 +37,14 @@ export class HttpHelix implements HelixClient {
   private async request(method: string, path: string, query: Record<string, string>, body?: unknown): Promise<any> {
     const url = new URL(path, this.base); url.search = new URLSearchParams(query).toString();
     try {
-      const response = await fetch(url, { method, redirect: 'error', signal: AbortSignal.timeout(this.options.timeoutMs ?? 4000),
-        headers: { 'Client-Id': this.options.clientId, Authorization: `Bearer ${await this.options.token()}`, 'Content-Type': 'application/json' },
+      let token = await this.options.token();
+      const request = () => fetch(url, { method, redirect: 'error', signal: AbortSignal.timeout(this.options.timeoutMs ?? 4000),
+        headers: { 'Client-Id': this.options.clientId, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
         body: body === undefined ? undefined : JSON.stringify(body) });
+      let response = await request();
+      if (response.status === 401 && this.options.refreshAfter401) {
+        await this.options.refreshAfter401(token); token = await this.options.token(); response = await request();
+      }
       if (!response.ok) throw new HelixFailure(`Helix request rejected with HTTP ${response.status}`, response.status >= 500);
       if (response.status === 204) return null;
       return await response.json();

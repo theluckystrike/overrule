@@ -19,12 +19,12 @@ export class VoteLoop extends EventEmitter {
   private brain: Brain;
   private analyses = new Set<Promise<void>>();
   replaying = false;
-  constructor(options: { journal?: Journal; now?: () => number; autoApprove?: boolean; helix?: HelixClient; brain?: Brain } = {}) {
+  constructor(options: { journal?: Journal; now?: () => number; autoApprove?: boolean; helix?: HelixClient; brain?: Brain; channelId?: string; streamId?: string } = {}) {
     super();
     this.now = options.now ?? Date.now;
     this.autoApprove = options.autoApprove ?? false;
-    this.engine = new CaseEngine(options.journal ?? new Journal(), randomUUID());
-    this.ingest = new Ingest(this.engine, 'channel-test');
+    this.engine = new CaseEngine(options.journal ?? new Journal(), options.streamId ?? randomUUID());
+    this.ingest = new Ingest(this.engine, options.channelId ?? 'channel-test');
     this.brain = options.brain ?? new Brain();
     this.effects = new Effects(this.engine, { client: options.helix, now: this.now, notify: () => this.publish() });
   }
